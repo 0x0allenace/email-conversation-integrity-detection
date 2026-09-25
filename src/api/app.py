@@ -22,6 +22,36 @@ from src.api.models import (
 )
 from src.api.service import AnalysisService
 from src.database.session import get_db
+from src.integrations.siem.factory import (
+    create_siem_integration,
+)
+from src.integrations.siem.manager import (
+    SIEMIntegrationManager,
+)
+from src.integrations.siem.service import SIEMService
+
+
+def _create_analysis_service() -> AnalysisService:
+    """Create the application analysis service."""
+
+    integration = create_siem_integration(
+        settings,
+    )
+
+    if integration is None:
+        return AnalysisService()
+
+    manager = SIEMIntegrationManager(
+        integrations=[integration],
+    )
+
+    siem_service = SIEMService(
+        manager=manager,
+    )
+
+    return AnalysisService(
+        siem_service=siem_service,
+    )
 
 
 app = FastAPI(
@@ -30,7 +60,7 @@ app = FastAPI(
     version=settings.version,
 )
 
-analysis_service = AnalysisService()
+analysis_service = _create_analysis_service()
 
 
 def _validate_required_text(

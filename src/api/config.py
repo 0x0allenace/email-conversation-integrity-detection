@@ -48,5 +48,71 @@ class APISettings:
         )
     )
 
+    siem_enabled: bool = field(
+        default_factory=lambda: os.getenv(
+            "ECID_SIEM_ENABLED",
+            "false",
+        ).lower()
+        in {"1", "true", "yes", "on"}
+    )
+
+    siem_provider: str = field(
+        default_factory=lambda: os.getenv(
+            "ECID_SIEM_PROVIDER",
+            "",
+        ).strip().lower()
+    )
+
+    siem_url: str = field(
+        default_factory=lambda: os.getenv(
+            "ECID_SIEM_URL",
+            "",
+        ).strip()
+    )
+
+    siem_token: str = field(
+        default_factory=lambda: os.getenv(
+            "ECID_SIEM_TOKEN",
+            "",
+        )
+    )
+
+    siem_username: str = field(
+        default_factory=lambda: os.getenv(
+            "ECID_SIEM_USERNAME",
+            "",
+        )
+    )
+
+    siem_password: str = field(
+        default_factory=lambda: os.getenv(
+            "ECID_SIEM_PASSWORD",
+            "",
+        )
+    )
+
+    siem_index: str = field(
+        default_factory=lambda: os.getenv(
+            "ECID_SIEM_INDEX",
+            "ecid-events",
+        )
+    )
+
+    siem_source: str = field(
+        default_factory=lambda: os.getenv(
+            "ECID_SIEM_SOURCE",
+            "email-conversation-integrity-detection",
+        )
+    )
+
+    siem_timeout: float = field(
+        default_factory=lambda: float(
+            os.getenv(
+                "ECID_SIEM_TIMEOUT",
+                "10.0",
+            )
+        )
+    )
+
 
 settings = APISettings()
