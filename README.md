@@ -4,7 +4,7 @@
 
 An open-source Blue Team detection engine designed to identify suspicious email messages that appear to impersonate, clone, or hijack an established business email conversation.
 
-The project focuses on Business Email Compromise (BEC), email impersonation, conversation hijacking, and sender identity anomalies by analyzing email headers, authentication results, sender identity, conversation history, infrastructure, and communication behavior.
+The project focuses on Business Email Compromise (BEC), email impersonation, conversation hijacking, and sender identity anomalies by analyzing email headers, authentication results, sender identity, conversation participants, infrastructure, and communication behavior.
 
 ---
 
@@ -15,6 +15,7 @@ The project focuses on Business Email Compromise (BEC), email impersonation, con
 The current implementation provides:
 
 - Email parsing and normalization
+- Header extraction and normalization
 - Sender identity analysis
 - Conversation participant analysis
 - Lookalike-domain detection
@@ -28,6 +29,12 @@ The current implementation provides:
 - FastAPI API
 - PostgreSQL persistence
 - Docker / Docker Compose deployment
+- Normalized SIEM event generation
+- SIEM integration management
+- Splunk integration
+- Elastic integration
+- Wazuh integration
+- Application-level SIEM configuration
 - Automated test coverage
 
 The project is being developed incrementally. Deterministic and explainable detection techniques are being established before introducing machine-learning-based behavioral anomaly detection.
@@ -58,7 +65,7 @@ Business email attacks do not always look like traditional phishing. An attacker
 
 The display name and domain may appear convincing to a human recipient while the underlying identity is different.
 
-The purpose of Email Conversation Integrity Detection is to identify these inconsistencies automatically and provide an explainable risk assessment.
+The purpose of Email Conversation Integrity Detection is to identify these inconsistencies automatically and provide an explainable risk assessment that can support SOC investigation.
 
 ---
 
@@ -66,16 +73,16 @@ The purpose of Email Conversation Integrity Detection is to identify these incon
 
 1. Parse and normalize email messages.
 2. Extract security-relevant email headers.
-3. Reconstruct email conversations.
-4. Establish known participants within a conversation.
-5. Detect sender identity inconsistencies.
-6. Detect lookalike domains.
-7. Analyze Reply-To and sender relationships.
-8. Evaluate SPF, DKIM, and DMARC results where available.
-9. Identify suspicious infrastructure changes.
-10. Detect abnormal communication behavior.
-11. Generate explainable risk scores.
-12. Produce SOC-friendly detection results.
+3. Establish known participants within a conversation.
+4. Detect sender identity inconsistencies.
+5. Detect lookalike domains.
+6. Analyze Reply-To and sender relationships.
+7. Evaluate SPF, DKIM, and DMARC results where available.
+8. Identify suspicious infrastructure changes.
+9. Detect abnormal communication behavior.
+10. Generate explainable risk scores.
+11. Produce SOC-friendly detection results.
+12. Normalize detection results into SIEM events.
 13. Integrate detections with SIEM platforms.
 14. Provide an extensible foundation for behavioral anomaly detection.
 
@@ -185,7 +192,7 @@ curl -X POST \
   http://localhost:8000/analyze
 ```
 
-> The participant baseline should contain every established participant of the conversation (both `bob@supplier.com` and `alice@company.com` above) — omitting one causes BEC-003 to flag that participant as unexpected.
+> The participant baseline should contain every established participant of the conversation. Omitting an established participant can cause BEC-003 to identify that participant as unexpected.
 
 The API returns:
 
@@ -270,7 +277,7 @@ FastAPI also provides interactive API documentation when the application is runn
 
 ## Core Detection Concept
 
-The system establishes a baseline from legitimate messages within a conversation, then compares newly received messages against that baseline.
+The system establishes a baseline from known participants, sender identity, infrastructure, and behavioral information, then compares newly received messages against that baseline.
 
 ```text
                     Incoming Email
@@ -282,10 +289,7 @@ The system establishes a baseline from legitimate messages within a conversation
                  Header Extraction
                           │
                           ▼
-              Conversation Reconstruction
-                          │
-                          ▼
-                  Identity Analysis
+                 Identity Analysis
                           │
           ┌───────────────┼────────────────┐
           ▼               ▼                ▼
@@ -303,8 +307,10 @@ The system establishes a baseline from legitimate messages within a conversation
              Normal            Suspicious
                                    │
                                    ▼
-                              SOC Alert
+                         SIEM / SOC Workflow
 ```
+
+The detection engine is designed around deterministic, observable indicators so that analysts can investigate the evidence behind each detection.
 
 ---
 
@@ -334,7 +340,7 @@ Reply-To: john.supplier@gmail.com
 
 Detects a participant appearing in an established conversation that is not present in the supplied participant baseline.
 
-This detection depends on the quality of the conversation baseline.
+This detection depends on the quality of the conversation baseline supplied to the analysis engine.
 
 ### BEC-004 — Authentication Anomaly
 
@@ -343,6 +349,8 @@ Analyzes available authentication results:
 - SPF
 - DKIM
 - DMARC
+
+The detection uses authentication information available in the analyzed message.
 
 ### BEC-005 — Sender Infrastructure Anomaly
 
@@ -371,7 +379,7 @@ Detects suspicious messages that appear to continue an existing conversation whi
 - Authentication
 - Participant relationships
 
-The current rule uses conversation/thread indicators together with sender identity and conversation context.
+The current implementation combines conversation/thread indicators with sender identity and available conversation context.
 
 ### BEC-007 — Behavioral Communication Anomaly
 
@@ -421,21 +429,153 @@ Alice <alice@company.com>
 Bob <bob@supp1ier.com>
 ```
 
-The detector may identify:
+The detector can identify evidence such as:
 
-> ⚠ **Suspicious Conversation Participant**
->
-> **Known identity:** `bob@supplier.com`
-> **Observed identity:** `bob@supp1ier.com`
->
-> **Indicators:**
-> - Display name matches known participant
-> - Domain differs from known participant
-> - Domain is visually similar
-> - Sender has not previously appeared in the supplied baseline
->
-> **Classification:** Potential impersonation
-> **Risk:** Determined by the configured detection rules
+```text
+Known identity:    bob@supplier.com
+Observed identity: bob@supp1ier.com
+```
+
+**Potential indicators include:**
+
+- Display name matches a known participant
+- Domain differs from the known participant
+- Domain is visually similar
+- Sender has not previously appeared in the supplied baseline
+
+The resulting detection is accompanied by the applicable rule, indicators, details, and risk contribution.
+
+---
+
+## SIEM Integration
+
+The project now includes an application-level SIEM integration layer.
+
+Detection results can be converted into a normalized `SIEMEvent` before being dispatched to a configured SIEM provider.
+
+```text
+Detection Result
+       │
+       ▼
+SIEM Event Adapter
+       │
+       ▼
+Normalized SIEM Event
+       │
+       ▼
+SIEM Service
+       │
+       ▼
+Integration Manager
+       │
+ ┌─────┼─────┐
+ ▼     ▼     ▼
+Splunk Elastic Wazuh
+```
+
+### Supported Providers
+
+| Provider | Status | Authentication |
+|---|---|---|
+| Splunk | ✅ Implemented | HEC token |
+| Elastic | ✅ Implemented | API key or basic authentication |
+| Wazuh | ✅ Implemented | Username/password |
+
+The application currently configures one SIEM provider at startup.
+
+### Application SIEM Configuration
+
+SIEM configuration is controlled through environment variables.
+
+**Core settings:**
+
+```text
+ECID_SIEM_ENABLED
+ECID_SIEM_PROVIDER
+ECID_SIEM_URL
+ECID_SIEM_TOKEN
+ECID_SIEM_USERNAME
+ECID_SIEM_PASSWORD
+ECID_SIEM_INDEX
+ECID_SIEM_SOURCE
+ECID_SIEM_TIMEOUT
+```
+
+SIEM integration is disabled by default.
+
+**Example Splunk configuration:**
+
+```bash
+export ECID_SIEM_ENABLED=true
+export ECID_SIEM_PROVIDER=splunk
+export ECID_SIEM_URL=https://splunk.example.com:8088
+export ECID_SIEM_TOKEN=<your-hec-token>
+export ECID_SIEM_INDEX=ecid-events
+export ECID_SIEM_SOURCE=email-conversation-integrity-detection
+export ECID_SIEM_TIMEOUT=10.0
+```
+
+**Example Elastic configuration using an API key:**
+
+```bash
+export ECID_SIEM_ENABLED=true
+export ECID_SIEM_PROVIDER=elastic
+export ECID_SIEM_URL=https://elastic.example.com:9200
+export ECID_SIEM_TOKEN=<your-api-key>
+export ECID_SIEM_INDEX=ecid-events
+export ECID_SIEM_TIMEOUT=10.0
+```
+
+**Example Elastic configuration using basic authentication:**
+
+```bash
+export ECID_SIEM_ENABLED=true
+export ECID_SIEM_PROVIDER=elastic
+export ECID_SIEM_URL=https://elastic.example.com:9200
+export ECID_SIEM_USERNAME=<your-username>
+export ECID_SIEM_PASSWORD=<your-password>
+export ECID_SIEM_INDEX=ecid-events
+export ECID_SIEM_TIMEOUT=10.0
+```
+
+**Example Wazuh configuration:**
+
+```bash
+export ECID_SIEM_ENABLED=true
+export ECID_SIEM_PROVIDER=wazuh
+export ECID_SIEM_URL=https://wazuh.example.com:55000
+export ECID_SIEM_USERNAME=<your-username>
+export ECID_SIEM_PASSWORD=<your-password>
+export ECID_SIEM_INDEX=ecid-events
+export ECID_SIEM_TIMEOUT=10.0
+```
+
+> **Security:** Do not commit SIEM tokens, passwords, API keys, or other secrets to the repository. Use environment variables or an appropriate secret-management mechanism.
+
+### SIEM Event Model
+
+The normalized event contains security-relevant fields such as:
+
+- Event type
+- Timestamp
+- Message ID
+- Sender email
+- Sender domain
+- Recipients
+- Subject
+- Detection rule
+- Severity
+- Match status
+- Risk score
+- Indicators
+- Detection details
+- Authentication context
+- Infrastructure context
+- Conversation context
+- Event source
+- Schema version
+
+This normalized layer keeps the detection engine independent from individual SIEM platforms.
 
 ---
 
@@ -446,6 +586,7 @@ email-conversation-integrity-detection/
 │
 ├── README.md
 ├── LICENSE
+├── .dockerignore
 ├── .gitignore
 ├── Dockerfile
 ├── docker-compose.yml
@@ -467,6 +608,8 @@ email-conversation-integrity-detection/
 │   ├── engine/
 │   ├── identity/
 │   ├── infrastructure/
+│   ├── integrations/
+│   │   └── siem/
 │   ├── parser/
 │   └── scoring/
 │
@@ -480,14 +623,23 @@ email-conversation-integrity-detection/
 │   ├── reply-to-manipulation/
 │   └── thread-hijacking/
 │
-├── dashboards/
-│
-├── integrations/
-│   ├── splunk/
-│   ├── elastic/
-│   └── wazuh/
-│
 └── scripts/
+```
+
+The SIEM integration implementation currently lives under:
+
+```text
+src/integrations/siem/
+├── __init__.py
+├── base.py
+├── elastic.py
+├── event.py
+├── event_adapter.py
+├── factory.py
+├── manager.py
+├── service.py
+├── splunk.py
+└── wazuh.py
 ```
 
 ---
@@ -496,7 +648,7 @@ email-conversation-integrity-detection/
 
 | Component | Technology |
 |---|---|
-| Language | Python |
+| Language | Python 3.13+ |
 | API | FastAPI |
 | Database | PostgreSQL |
 | ORM | SQLAlchemy |
@@ -528,17 +680,19 @@ Layer 5 — Behavioral Analysis
         ↓
 Layer 6 — Risk Scoring
         ↓
-Layer 7 — SOC Alerting
+Layer 7 — SIEM / SOC Integration
 ```
 
 The implementation prioritizes deterministic and explainable detections before introducing machine-learning-based anomaly detection.
+
+Each layer is designed to produce evidence that can be inspected by a security analyst rather than relying exclusively on a final classification.
 
 ---
 
 ## Security Design Principles
 
 **Explainability**
-Every alert should explain why the message was considered suspicious.
+Every detection should explain why the message was considered suspicious.
 
 **Evidence First**
 Detections should be based on observable email evidence rather than assumptions.
@@ -552,6 +706,9 @@ The project uses synthetic emails and controlled laboratory environments.
 **Human Verification**
 High-impact actions should not be performed automatically solely because a message receives a high risk score.
 
+**Separation of Detection and Enrichment**
+Deterministic detection logic should remain understandable and testable independently from future enrichment and machine-learning components.
+
 ---
 
 ## Testing
@@ -561,97 +718,56 @@ The project uses Pytest for automated testing.
 Run the complete test suite:
 
 ```bash
-pytest -q
+python3 -m pytest -v
 ```
 
-The current regression baseline is:
+**Current regression baseline:**
 
 ```text
-121 passed
+192 passed
+1 warning
 ```
 
-A Starlette/httpx deprecation warning may appear depending on the installed dependency versions. It does not currently cause test failures.
+The warning currently originates from a Starlette/httpx deprecation in the installed testing dependency stack. It does not currently cause test failures.
 
----
+The test suite covers:
 
-## Planned SIEM Integrations
-
-The project contains integration directories for future SIEM implementations:
-
-```text
-integrations/
-├── splunk/
-├── elastic/
-└── wazuh/
-```
-
-**Splunk**
-
-- Detection event ingestion
-- Dashboards
-- Correlation searches
-- Investigation workflows
-- Alerting
-
-**Elastic**
-
-- Elasticsearch event ingestion
-- Kibana dashboards
+- API behavior
+- API configuration
+- Database persistence
+- Email parsing
+- Authentication analysis
+- Identity analysis
+- Participant analysis
+- Infrastructure analysis
 - Detection rules
-- Investigation workflows
-
-**Wazuh**
-
-- Security event ingestion
-- Alert correlation
-- SOC monitoring
-
----
-
-## Future Development
-
-Potential future capabilities include:
-
-- Microsoft Graph integration
-- Gmail API integration
-- IMAP collection
-- Automated mailbox monitoring
-- Conversation graph visualization
-- Sender reputation analysis
-- Domain age analysis
-- WHOIS/RDAP enrichment
-- Threat-intelligence enrichment
-- Additional email-specific indicators
-- Machine-learning anomaly detection
-  - Isolation Forest
-  - Local Outlier Factor
-  - One-Class SVM
-  - Autoencoder-based behavioral detection
-- Analyst feedback loops
-- Case management
+- Risk scoring
+- Detection engine behavior
+- SIEM event normalization
+- SIEM event adaptation
+- SIEM integration management
+- Splunk integration
+- Elastic integration
+- Wazuh integration
+- Application SIEM configuration
 
 ---
 
-## Research Direction
+## Development Validation
 
-A future experimental component will investigate whether unsupervised machine learning can identify abnormal email communication behavior without requiring labeled attack datasets.
+Before committing changes, the project can be validated with:
 
-Potential features include:
+```bash
+python3 -m pytest -v
+```
 
-- `sender_frequency`
-- `recipient_frequency`
-- `sending_hour`
-- `response_time`
-- `participant_count`
-- `subject_similarity`
-- `body_similarity`
-- `attachment_frequency`
-- `sender_infrastructure_frequency`
-- `domain_similarity`
-- `authentication_results`
-- `reply_to_frequency`
+Check staged changes for whitespace errors:
 
-The ML layer will remain separate from the deterministic detection engine so that the system can compare rule-based and behavioral approaches.
+```bash
+git diff --cached --check
+```
+
+The project follows incremental development with focused tests followed by full regression testing before commits.
 
 ---
 
@@ -675,12 +791,130 @@ The ML layer will remain separate from the deterministic detection engine so tha
 | FastAPI | ✅ |
 | PostgreSQL | ✅ |
 | Docker / Docker Compose | ✅ |
-| SIEM integration foundation | 🚧 |
-| Splunk integration | ⏳ |
-| Elastic integration | ⏳ |
-| Wazuh integration | ⏳ |
+| SIEM event model | ✅ |
+| SIEM event adapter | ✅ |
+| SIEM integration contract | ✅ |
+| SIEM integration manager | ✅ |
+| Splunk integration | ✅ |
+| Elastic integration | ✅ |
+| Wazuh integration | ✅ |
+| Application SIEM service | ✅ |
+| SIEM integration into analysis workflow | ✅ |
+| Application SIEM configuration | ✅ |
 | Behavioral detection expansion | ⏳ |
 | ML anomaly detection | ⏳ |
+
+---
+
+## Future Development
+
+Potential future capabilities include:
+
+- Microsoft Graph integration
+- Gmail API integration
+- IMAP collection
+- Automated mailbox monitoring
+- Conversation graph visualization
+- Sender reputation analysis
+- Domain age analysis
+- WHOIS/RDAP enrichment
+- Threat-intelligence enrichment
+- Additional email-specific indicators
+- Expanded behavioral detection
+- Machine-learning anomaly detection
+  - Isolation Forest
+  - Local Outlier Factor
+  - One-Class SVM
+  - Autoencoder-based behavioral detection
+- Analyst feedback loops
+- Case management
+- Expanded SIEM dashboards and detection workflows
+
+---
+
+## Research Direction
+
+A future experimental component will investigate whether unsupervised machine learning can identify abnormal email communication behavior without requiring labeled attack datasets.
+
+**Potential features include:**
+
+- `sender_frequency`
+- `recipient_frequency`
+- `sending_hour`
+- `response_time`
+- `participant_count`
+- `subject_similarity`
+- `body_similarity`
+- `attachment_frequency`
+- `sender_infrastructure_frequency`
+- `domain_similarity`
+- `authentication_results`
+- `reply_to_frequency`
+
+**Candidate models include:**
+
+- Isolation Forest
+- Local Outlier Factor
+- One-Class SVM
+- Autoencoder-based anomaly detection
+
+The ML layer will remain separate from the deterministic detection engine so that the system can compare rule-based and behavioral approaches.
+
+---
+
+## Current Architecture
+
+The current application architecture can be summarized as:
+
+```text
+                         ┌───────────────────┐
+                         │    .eml Message   │
+                         └─────────┬─────────┘
+                                   │
+                                   ▼
+                         ┌───────────────────┐
+                         │   Email Parser    │
+                         └─────────┬─────────┘
+                                   │
+                                   ▼
+                         ┌───────────────────┐
+                         │ Analysis Context  │
+                         └─────────┬─────────┘
+                                   │
+                ┌──────────────────┼──────────────────┐
+                ▼                  ▼                  ▼
+        ┌──────────────┐   ┌──────────────┐   ┌──────────────┐
+        │   Identity   │   │Authentication│   │Infrastructure│
+        │   Analysis   │   │   Analysis   │   │   Analysis   │
+        └──────┬───────┘   └──────┬───────┘   └──────┬───────┘
+               │                  │                  │
+               └──────────────────┼──────────────────┘
+                                  ▼
+                         ┌───────────────────┐
+                         │ Detection Engine  │
+                         └─────────┬─────────┘
+                                   │
+                                   ▼
+                         ┌───────────────────┐
+                         │   Risk Scoring    │
+                         └─────────┬─────────┘
+                                   │
+                         ┌─────────┴─────────┐
+                         ▼                   ▼
+                ┌────────────────┐   ┌────────────────┐
+                │   PostgreSQL   │   │   SIEMService  │
+                └────────────────┘   └───────┬────────┘
+                                             │
+                                             ▼
+                                    ┌──────────────────┐
+                                    │ Integration      │
+                                    │ Manager         │
+                                    └────────┬─────────┘
+                                             │
+                                  ┌──────────┼──────────┐
+                                  ▼          ▼          ▼
+                               Splunk     Elastic     Wazuh
+```
 
 ---
 

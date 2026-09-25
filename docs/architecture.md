@@ -1,412 +1,364 @@
 # System Architecture
 
-## 1. Overview
+## Overview
 
-Email Clone Detector is designed as a modular email security analysis platform.
+Email Conversation Integrity Detection is a layered Blue Team detection engine designed to analyze email messages for indicators of Business Email Compromise (BEC), sender impersonation, conversation manipulation, and suspicious communication behavior.
 
-The architecture separates email collection, parsing, forensic analysis, detection, scoring, and alerting so that individual components can be developed and tested independently.
+The architecture separates email parsing, identity analysis, authentication analysis, infrastructure analysis, detection logic, risk scoring, persistence, and SIEM integration.
 
-The primary objective is to determine whether a newly observed email is consistent with an established business conversation.
+The system is designed to remain explainable and extensible as additional detection and behavioral analysis capabilities are introduced.
 
 ---
 
-## 2. High-Level Architecture
+## High-Level Architecture
 
 ```text
-                         ┌──────────────────────┐
-                         │     Email Source     │
-                         │  .eml / IMAP / API   │
-                         └──────────┬───────────┘
-                                    │
-                                    ▼
-                         ┌──────────────────────┐
-                         │     Email Parser     │
-                         └──────────┬───────────┘
-                                    │
-                                    ▼
-                         ┌──────────────────────┐
-                         │ Header Normalization │
-                         └──────────┬───────────┘
-                                    │
-                                    ▼
-                    ┌───────────────────────────────┐
-                    │  Conversation Reconstruction  │
-                    └───────────────┬───────────────┘
-                                    │
-              ┌─────────────────────┼─────────────────────┐
-              ▼                     ▼                      ▼
-       ┌────────────┐       ┌──────────────┐       ┌──────────────┐
-       │  Identity  │       │Authentication│       │Infrastructure│
-       │  Analysis  │       │   Analysis   │       │   Analysis   │
-       └─────┬──────┘       └──────┬───────┘       └──────┬───────┘
-             │                     │                      │
-             └─────────────────────┼──────────────────────┘
-                                    ▼
-                         ┌──────────────────────┐
-                         │  Behavioral Analysis │
-                         └──────────┬───────────┘
-                                    │
-                                    ▼
-                         ┌──────────────────────┐
-                         │   Detection Engine   │
-                         └──────────┬───────────┘
-                                    │
-                                    ▼
-                         ┌──────────────────────┐
-                         │     Risk Scoring     │
-                         └──────────┬───────────┘
-                                    │
-                   ┌────────────────┴────────────────┐
-                   ▼                                  ▼
-          ┌──────────────────┐              ┌──────────────────┐
-          │ Detection Event  │              │   Alert Engine   │
-          └────────┬─────────┘              └────────┬─────────┘
-                   │                                  │
-                   ▼                                  ▼
-          ┌──────────────────┐              ┌──────────────────┐
-          │ SIEM Integration │              │  Analyst / Users │
-          └──────────────────┘              └──────────────────┘
+                         .eml Email
+                              │
+                              ▼
+                    ┌──────────────────┐
+                    │   Email Parser   │
+                    └────────┬─────────┘
+                             │
+                             ▼
+                    ┌──────────────────┐
+                    │ Header Extraction│
+                    │  & Normalization │
+                    └────────┬─────────┘
+                             │
+              ┌──────────────┼──────────────┐
+              │              │              │
+              ▼              ▼              ▼
+       ┌────────────┐ ┌──────────────┐ ┌──────────────┐
+       │  Identity  │ │Authentication│ │Infrastructure│
+       │  Analysis  │ │   Analysis   │ │   Analysis   │
+       └─────┬──────┘ └──────┬───────┘ └──────┬───────┘
+             │               │                │
+             └───────────────┼────────────────┘
+                             │
+                             ▼
+                    ┌──────────────────┐
+                    │ Detection Engine │
+                    └────────┬─────────┘
+                             │
+                             ▼
+                    ┌──────────────────┐
+                    │   Risk Scoring   │
+                    └────────┬─────────┘
+                             │
+                  ┌──────────┴──────────┐
+                  │                     │
+                  ▼                     ▼
+          ┌──────────────┐      ┌────────────────┐
+          │  PostgreSQL  │      │   SIEM Service │
+          └──────────────┘      └───────┬────────┘
+                                        │
+                                        ▼
+                               ┌─────────────────┐
+                               │ Integration     │
+                               │ Manager         │
+                               └───────┬─────────┘
+                                       │
+                             ┌─────────┼─────────┐
+                             ▼         ▼         ▼
+                          Splunk    Elastic    Wazuh
 ```
 
 ---
 
-## 3. Component Responsibilities
+## Application Layers
 
-### 3.1 Parser
+### API Layer
 
-Responsible for converting raw email messages into a normalized internal representation.
+The FastAPI application provides the external interface for submitting emails for analysis and retrieving persisted analyses.
 
-- **Input:** `.eml`
-- **Output:** `NormalizedEmail`
+Current endpoints include:
 
-The parser should extract:
+- `GET /health`
+- `GET /ready`
+- `POST /analyze`
+- `GET /analyses`
+- `GET /analyses/{id}`
 
+The API delegates analysis to the application service layer.
+
+### Service Layer
+
+`AnalysisService` provides the application-level workflow between the API, detection engine, database repository, and optional SIEM service.
+
+The service:
+
+1. Receives analysis parameters.
+2. Invokes the detection engine.
+3. Persists analysis results when a database session is provided.
+4. Dispatches matched detection results to the configured SIEM service when enabled.
+
+### Email Parser
+
+The parser extracts and normalizes information from `.eml` messages.
+
+The parser provides the structured email information required by downstream analysis components.
+
+Relevant information includes:
+
+- Message ID
+- Subject
 - Sender
 - Recipients
-- Subject
-- Body
-- Attachments
+- Reply-To
 - Headers
-- Timestamps
-- Message-ID
-- Threading metadata
+- Authentication-related headers
+- Received headers
+- Message body information
 
-### 3.2 Headers
+### Identity Analysis
 
-Responsible for analyzing security-relevant headers.
+The identity layer evaluates sender identity information against a supplied baseline.
 
-Important headers include:
+It supports detection of inconsistencies involving:
 
-```text
-From
-To
-Cc
-Reply-To
-Return-Path
-Message-ID
-In-Reply-To
-References
-Date
-Received
-Authentication-Results
-Received-SPF
-DKIM-Signature
-```
+- Sender email address
+- Sender domain
+- Display name
+- Known sender identity
+- Lookalike domains
 
-The module should preserve the original header values while also producing normalized fields for analysis.
+### Authentication Analysis
 
-### 3.3 Authentication
+The authentication layer evaluates authentication information available within the analyzed message.
 
-Responsible for evaluating email authentication evidence.
-
-The initial implementation should support analysis of:
+The current implementation considers:
 
 - SPF
 - DKIM
 - DMARC
 
-The module should not automatically treat a single authentication failure as proof of malicious activity. Authentication results are evidence that should be combined with other indicators.
+The results are passed to the detection engine as structured analysis data.
 
-### 3.4 Conversation
+### Infrastructure Analysis
 
-Responsible for reconstructing relationships between messages.
+The infrastructure layer evaluates sender infrastructure against known infrastructure.
 
-Potential correlation fields include:
+**Current indicators include:**
 
-- Message-ID
-- In-Reply-To
-- References
-- Subject
-- Participants
-- Conversation identifiers
+- Sending host
+- Sending IP address
 
-The module creates a conversation baseline containing known participants and historical characteristics.
+The current implementation focuses on previously unseen infrastructure.
 
-### 3.5 Identity
+**Future enrichment may include:**
 
-Responsible for comparing observed sender identities against known participants.
-
-Analysis includes:
-
-- Email address
-- Display name
-- Domain
-- Local part
-- Reply-To
-- Return-Path
-- Participant history
-
-The identity module should detect:
-
-- Exact identity changes
-- Display-name impersonation
-- Lookalike domains
-- Unexpected participants
-- Sender/reply inconsistencies
-
-### 3.6 Infrastructure
-
-Responsible for analyzing sending infrastructure.
-
-Potential data:
-
-- IP address
-- Hostname
-- Reverse DNS
 - ASN
-- Mail server
 - Geographic information
-- Historical infrastructure
+- Reverse DNS
+- Infrastructure reputation
 
-The module establishes whether the observed infrastructure is consistent with previously observed messages.
+### Conversation Analysis
 
-### 3.7 Behavior
+Conversation-related analysis uses known participants and conversation context to identify inconsistencies within an established communication relationship.
 
-Responsible for analyzing communication patterns.
+This includes:
 
-Potential features:
+- Known participants
+- Unexpected participants
+- Thread-related indicators
+- Sender identity changes
+- Conversation hijacking indicators
 
-- Sending time
-- Response time
-- Sender frequency
-- Recipient frequency
-- Participant frequency
-- Subject similarity
-- Attachment frequency
-- Communication frequency
+The quality of the supplied baseline affects the accuracy of participant-based detections.
 
-Behavioral analysis should initially remain descriptive. Machine-learning detection can be added after a sufficient baseline exists.
+### Detection Engine
 
-### 3.8 Detection Engine
+The detection engine coordinates the individual detection rules and produces structured detection results.
 
-The detection engine evaluates individual rules (e.g. `BEC-001`, `BEC-002`, `BEC-003`, ...).
+**Current detection rules include:**
 
-Each rule should return structured evidence:
+- BEC-001 — Lookalike Domain
+- BEC-002 — Reply-To Mismatch
+- BEC-003 — Thread Participant Anomaly
+- BEC-004 — Authentication Anomaly
+- BEC-005 — Sender Infrastructure Anomaly
+- BEC-006 — Conversation Hijacking
+- BEC-007 — Behavioral Communication Anomaly
 
-```json
-{
-  "rule_id": "BEC-001",
-  "matched": true,
-  "severity": "high",
-  "evidence": {
-    "known_domain": "supplier.com",
-    "observed_domain": "supp1ier.com"
-  }
-}
-```
+Each detection produces structured information including:
 
-### 3.9 Scoring
+- Rule ID
+- Rule name
+- Severity
+- Match status
+- Risk score
+- Indicators
+- Details
 
-The scoring module combines detection results.
+### Risk Scoring
 
-| Rule | Indicator | Score |
-|---|---|---|
-| BEC-001 | Lookalike Domain | +25 |
-| BEC-002 | Reply-To Mismatch | +20 |
-| BEC-004 | Authentication Issue | +20 |
-| BEC-005 | New Infrastructure | +10 |
-| | **Total** | **75** |
+Risk scoring is performed after detection analysis.
 
-The score should remain explainable.
+Each detection rule contributes an explainable risk score based on observable indicators. Individual detection scores are capped at 100.
 
-### 3.10 Alerting
+The persisted analysis also records the combined risk score from matched detections.
 
-The alerting module converts detection results into notifications.
+Risk scoring is intended to support investigation rather than replace analyst judgment.
 
-Potential destinations:
+### Database Layer
 
-- SOC dashboard
-- Email
-- Webhook
-- SIEM
-- Security mailbox
+PostgreSQL provides persistence for completed analyses.
 
-The alerting layer should support configurable response policies.
+The current database model contains:
+
+- `analyses`
+- `detections`
+
+The analysis record stores the overall analysis result, while individual detection records preserve the rule-level results.
+
+SQLAlchemy is used as the ORM layer.
 
 ---
 
-## 4. Data Flow
+## SIEM Architecture
+
+The SIEM layer separates detection logic from SIEM-specific implementation.
 
 ```text
-Raw Email
-    │
-    ▼
-Parse
-    │
-    ▼
-Normalize
-    │
-    ▼
-Store / Retrieve Conversation
-    │
-    ▼
-Build Baseline
-    │
-    ▼
-Analyze New Message
-    │
-    ├── Identity
-    ├── Authentication
-    ├── Infrastructure
-    └── Behavior
-    │
-    ▼
-Run Detection Rules
-    │
-    ▼
-Aggregate Evidence
-    │
-    ▼
-Calculate Risk
-    │
-    ▼
-Generate Detection Event
-    │
-    ├── Database
-    ├── SIEM
-    └── Alerting
+DetectionResult
+      │
+      ▼
+SIEMEventAdapter
+      │
+      ▼
+SIEMEvent
+      │
+      ▼
+SIEMService
+      │
+      ▼
+SIEMIntegrationManager
+      │
+      ├───────────┬───────────┐
+      ▼           ▼           ▼
+   Splunk      Elastic      Wazuh
 ```
+
+### SIEM Event
+
+`SIEMEvent` provides a normalized representation of a detection event.
+
+The event can contain:
+
+- Event type
+- Timestamp
+- Message ID
+- Sender information
+- Recipient information
+- Subject
+- Detection rule
+- Severity
+- Match status
+- Risk score
+- Indicators
+- Detection details
+- Authentication context
+- Infrastructure context
+- Conversation context
+- Source
+- Schema version
+
+### SIEM Service
+
+`SIEMService` converts detection results into normalized SIEM events and dispatches them through the configured SIEM integration manager.
+
+The service allows the detection engine to remain independent of the destination SIEM platform.
+
+### SIEM Integration Manager
+
+`SIEMIntegrationManager` maintains the registered SIEM integrations.
+
+It supports:
+
+- Registering integrations
+- Retrieving integrations
+- Listing integrations
+- Sending events to one integration
+- Broadcasting events to registered integrations
+
+### SIEM Provider Integrations
+
+The current implementation supports:
+
+**Splunk**
+Uses Splunk HTTP Event Collector (HEC).
+Authentication: HEC token
+
+**Elastic**
+Supports:
+- API key authentication
+- Basic authentication
+
+**Wazuh**
+Supports:
+- Username/password authentication
 
 ---
 
-## 5. Internal Detection Event
+## Configuration
 
-All detections should use a consistent event structure.
-
-```json
-{
-  "event_type": "email_security_detection",
-  "rule_id": "BEC-001",
-  "severity": "high",
-  "risk_score": 82,
-  "sender": "bob@supp1ier.com",
-  "known_sender": "bob@supplier.com",
-  "conversation_id": "conversation-123",
-  "indicators": [
-    "lookalike_domain",
-    "new_participant"
-  ],
-  "timestamp": "2026-09-21T15:00:00Z"
-}
-```
-
----
-
-## 6. Storage Architecture
-
-The initial MVP can use SQLite for local development. Production-oriented deployments should support PostgreSQL.
-
-**Conceptual entities:**
-
-- Email
-- Conversation
-- Participant
-- Identity
-- Infrastructure
-- Detection
-- Alert
-
-**Relationships:**
+Application-level SIEM configuration is controlled using environment variables.
 
 ```text
-Conversation
-     │
-     ├── Email
-     │     ├── Sender
-     │     ├── Recipients
-     │     └── Authentication
-     │
-     ├── Participants
-     │
-     └── Detections
+ECID_SIEM_ENABLED
+ECID_SIEM_PROVIDER
+ECID_SIEM_URL
+ECID_SIEM_TOKEN
+ECID_SIEM_USERNAME
+ECID_SIEM_PASSWORD
+ECID_SIEM_INDEX
+ECID_SIEM_SOURCE
+ECID_SIEM_TIMEOUT
 ```
+
+SIEM integration is disabled by default.
+
+> Secrets should not be committed to source control.
 
 ---
 
-## 7. Integration Boundary
+## Container Architecture
 
-External integrations should be isolated from the core detection engine.
+Docker Compose is used to run the application and PostgreSQL environment.
 
 ```text
-                 Core Engine
-                     │
-          ┌──────────┼──────────┐
-          ▼          ▼          ▼
-        Splunk     Elastic     Wazuh
+             Docker Compose
+                  │
+        ┌─────────┴─────────┐
+        ▼                   ▼
+   ECID API             PostgreSQL
+   Container             Container
+        │                   │
+        └─────────┬─────────┘
+                  │
+             Application
 ```
 
-This allows the detection engine to operate independently of any particular SIEM.
+External SIEM platforms can be configured through the application environment.
 
 ---
 
-## 8. Security Boundaries
+## Design Principles
 
-The system should treat email content as untrusted input.
+The architecture follows these principles:
 
-Security controls should include:
+**Separation of Concerns**
+Parsing, analysis, detection, scoring, persistence, and SIEM integration remain separate components.
 
-- Input validation
-- Safe MIME parsing
-- Attachment isolation
-- Size limits
-- Parser error handling
-- Logging
-- Authentication for APIs
-- Authorization for administrative functions
-- Secrets stored outside source code
-- No execution of email attachments
+**Explainability**
+Detection results expose the indicators and details that contributed to a detection.
 
-> Email attachments must be treated as untrusted files and should never be executed by the parser.
+**Extensibility**
+Additional detection rules and SIEM integrations can be added without redesigning the entire application.
 
----
+**Defensive Design**
+The system is designed for authorized security analysis and controlled environments.
 
-## 9. MVP Architecture
-
-The first implementation should deliberately exclude complex external integrations.
-
-```text
-.eml
- │
- ▼
-Parser
- │
- ▼
-Header Analysis
- │
- ▼
-Conversation Reconstruction
- │
- ▼
-Identity Detection
- │
- ▼
-Authentication Analysis
- │
- ▼
-Risk Scoring
- │
- ▼
-JSON / CLI Alert
-```
-
-Once this pipeline is stable, API, database, SIEM, and mailbox integrations can be introduced incrementally.
+**Deterministic First**
+Deterministic detection rules provide the foundation before introducing machine-learning-based behavioral analysis.

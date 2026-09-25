@@ -1,440 +1,322 @@
 # Detection Methodology
 
-## 1. Purpose
+## Overview
 
-The Email Clone Detector uses a layered detection methodology to identify messages that may represent impersonation, conversation hijacking, or other forms of Business Email Compromise.
+Email Conversation Integrity Detection uses a layered and explainable detection methodology.
 
-The methodology prioritizes:
+The system compares an analyzed email against a supplied baseline representing known sender identity, participants, infrastructure, and communication behavior.
 
-- Observable evidence
-- Deterministic detection
-- Explainability
-- Contextual analysis
-- Multiple independent indicators
-
-> A single indicator should generally not be treated as sufficient evidence of malicious activity.
+The objective is to identify inconsistencies that may indicate Business Email Compromise (BEC), impersonation, conversation hijacking, or abnormal communication behavior.
 
 ---
 
-## 2. Detection Layers
+## Detection Pipeline
 
 ```text
-1. Email Parsing
-       ↓
-2. Header Analysis
-       ↓
-3. Conversation Analysis
-       ↓
-4. Identity Analysis
-       ↓
-5. Authentication Analysis
-       ↓
-6. Infrastructure Analysis
-       ↓
-7. Behavioral Analysis
-       ↓
-8. Detection Correlation
-       ↓
-9. Risk Scoring
-       ↓
-10. Alert Generation
+Incoming Email
+      │
+      ▼
+Email Parsing
+      │
+      ▼
+Header Extraction
+      │
+      ▼
+Identity Analysis
+      │
+      ├───────────────┐
+      ▼               ▼
+Authentication   Infrastructure
+   Analysis         Analysis
+      │               │
+      └───────┬───────┘
+              ▼
+       Behavior Analysis
+              │
+              ▼
+       Detection Rules
+              │
+              ▼
+         Risk Scoring
+              │
+              ▼
+       Detection Results
+              │
+              ▼
+       Optional SIEM
+          Dispatch
 ```
 
 ---
 
-## 3. Email Parsing
+## Baseline-Based Detection
 
-The first stage converts the raw email into a normalized representation.
+The detection engine uses known information as a comparison baseline.
 
-Required fields include:
+Examples include:
 
-```text
-From
-To
-Cc
-Reply-To
-Return-Path
-Subject
-Date
-Message-ID
-In-Reply-To
-References
-Received
-Authentication-Results
-Body
-Attachments
-```
-
-The parser must preserve the original values for forensic review.
-
----
-
-## 4. Header Analysis
-
-Headers provide important evidence about the origin and handling of a message.
-
-The system should identify inconsistencies such as:
-
-- `From` ≠ `Reply-To`
-- `From` ≠ `Return-Path`
-- Unexpected `Received` chain
-- Missing expected threading headers
-- Unexpected `Message-ID` structure
-
-> Header anomalies should be evaluated in context. For example, a `Reply-To` address different from `From` is not inherently malicious — legitimate mailing systems and support workflows may use this configuration.
-
----
-
-## 5. Conversation Reconstruction
-
-A conversation baseline is created from previously observed messages.
-
-The baseline may contain:
-
+- Known sender domain
+- Known sender display name
 - Known participants
-- Known domains
-- Known subjects
-- Known Reply-To addresses
-- Known infrastructure
-- Known communication patterns
-- Known thread identifiers
+- Known sending hosts
+- Known IP addresses
+- Known communication behavior
 
-**Example:**
+The baseline should represent legitimate communication patterns as accurately as possible.
 
-```text
-Conversation #1001
-Participants:
-  alice@company.com
-  bob@supplier.com
-  finance@company.com
-```
-
-A new message introducing `bob@supp1ier.com` should be compared against the established baseline.
+> Poor or incomplete baseline information can produce false positives.
 
 ---
 
-## 6. Identity Analysis
+## Identity Analysis
 
-Identity analysis evaluates whether the observed sender is consistent with a known participant.
+Identity analysis examines the relationship between the observed sender and the known sender identity.
 
-### 6.1 Exact Match
+Relevant fields include:
 
-| | Address |
-|---|---|
-| Known | `bob@supplier.com` |
-| Observed | `bob@supplier.com` |
+- Email address
+- Domain
+- Display name
 
-No identity mismatch.
-
-### 6.2 Display Name Match With Address Mismatch
-
-| | Identity |
-|---|---|
-| Known | `Bob Smith <bob@supplier.com>` |
-| Observed | `Bob Smith <attacker@example.com>` |
-
-Potential impersonation indicator.
-
-### 6.3 Lookalike Domain
-
-The system compares the observed domain with known participant domains.
+The analysis looks for inconsistencies such as:
 
 ```text
-supplier.com
-supp1ier.com
+Known:    john@supplier.com
+Observed: john@supp1ier.com
 ```
 
-Potential techniques include:
-
-- Character substitution
-- Insertion
-- Deletion
-- Transposition
-- Homoglyph detection
-- Edit distance
-
-The result should be treated as an indicator rather than proof of malicious intent.
+A matching display name does not establish that the underlying sender identity is legitimate.
 
 ---
 
-## 7. Reply-To Analysis
+## Domain Similarity
 
-The system compares `From`, `Reply-To`, and `Return-Path`.
-
-**Example:**
+Lookalike-domain detection compares the observed sender domain with the trusted domain.
 
 ```text
-From:     bob@supplier.com
-Reply-To: bob@external-mail.com
+Trusted:  supplier.com
+Observed: supp1ier.com
 ```
 
-Potential risk increases when this occurs alongside other anomalies.
+The purpose is to identify visually similar domains that could be used for impersonation.
+
+The current implementation uses deterministic domain similarity logic.
 
 ---
 
-## 8. Authentication Analysis
+## Reply-To Analysis
 
-The system records available authentication results: SPF, DKIM, DMARC.
-
-**Example:**
+The Reply-To address is compared with the apparent sender identity.
 
 ```text
-SPF:   fail
-DKIM:  fail
-DMARC: fail
+From:     John Smith <john@supplier.com>
+Reply-To: john.supplier@gmail.com
 ```
 
-Authentication failures should be correlated with identity and infrastructure evidence.
+A mismatch can indicate that replies may be redirected away from the apparent sender.
 
-> The detector should avoid simplistic logic such as "DKIM failed = malicious," because legitimate forwarding and email infrastructure can produce authentication anomalies.
+The mismatch is treated as an indicator rather than automatic proof of malicious activity.
 
 ---
 
-## 9. Infrastructure Analysis
+## Participant Analysis
 
-The system establishes historical infrastructure associated with known senders.
-
-Potential attributes include:
-
-- IP
-- Hostname
-- ASN
-- Reverse DNS
-- Mail server
-- Geographic region
-
-**Example:**
+The system compares observed conversation participants with the supplied participant baseline.
 
 ```text
-Known sender infrastructure:
-  203.0.113.10
-  203.0.113.11
-Observed:
-  198.51.100.45
+Known participants: alice@company.com, bob@supplier.com
+Observed:            alice@company.com, bob@supplier.com, attacker@example.net
 ```
 
-A previously unseen infrastructure source can increase suspicion when combined with other indicators.
+The additional participant can become a detection indicator.
+
+The baseline should include all legitimate participants expected within the conversation.
 
 ---
 
-## 10. Behavioral Analysis
+## Authentication Analysis
 
-Behavioral analysis compares the current message with historical communication patterns.
+The system extracts and evaluates available authentication information.
 
-Potential features:
+Current authentication signals include:
 
-- `sending_hour`
-- `sending_day`
-- `sender_frequency`
-- `recipient_frequency`
-- `response_time`
-- `participant_count`
-- `subject_similarity`
-- `attachment_frequency`
+- SPF
+- DKIM
+- DMARC
 
-**Example:**
+Authentication results provide supporting evidence for detection rules.
 
-```text
-Historical sender behavior:  09:00–17:00, Monday–Friday
-Observed:                    03:17
-```
-
-This should be considered an anomaly rather than automatic evidence of compromise.
+> Authentication failure alone does not necessarily establish that a message is malicious, because legitimate email infrastructure can produce authentication anomalies.
 
 ---
 
-## 11. Content Similarity
+## Infrastructure Analysis
 
-The system may compare a suspicious message with previous conversation content.
+Infrastructure analysis compares observed sender infrastructure against known infrastructure.
 
-Potential features:
+**Current indicators include:**
 
+- Sending host
+- Sending IP address
+
+```text
+Known host:    mail.supplier.com
+Observed host: new-mail.example.net
+```
+
+A previously unseen host or IP address can increase suspicion when combined with other indicators.
+
+---
+
+## Behavioral Analysis
+
+The current MVP includes deterministic behavioral analysis.
+
+The current implementation focuses on time-of-day communication behavior.
+
+For example, if a known sender normally communicates during an established time window and a new message occurs outside the supplied baseline, the difference can become a behavioral indicator.
+
+**Future behavioral analysis may include:**
+
+- Sender frequency
+- Recipient frequency
+- Sending hour
+- Response time
+- Participant count
 - Subject similarity
 - Body similarity
-- Signature similarity
-- Quoted-text similarity
-- Attachment similarity
-
-The objective is to identify messages that appear to reproduce an existing conversation while introducing a different sender identity or communication endpoint.
+- Attachment frequency
+- Infrastructure frequency
+- Domain similarity
+- Reply-To frequency
 
 ---
 
-## 12. Detection Correlation
+## Conversation Hijacking Analysis
 
-Individual detections should be combined.
+Conversation hijacking detection combines multiple sources of evidence.
+
+Potential indicators include:
+
+- Unexpected sender identity
+- Unexpected participant
+- Header inconsistencies
+- Infrastructure changes
+- Authentication anomalies
+- Conversation structure inconsistencies
+
+The objective is not to rely on one indicator but to identify combinations of inconsistencies that may indicate that an established conversation has been manipulated.
+
+---
+
+## Detection Results
+
+Each detection result contains structured information.
+
+A typical detection includes:
 
 ```text
-BEC-001 Lookalike Domain
-        +
-BEC-002 Reply-To Mismatch
-        +
-BEC-004 Authentication Anomaly
-        +
-BEC-005 New Infrastructure
+Rule ID
+Rule Name
+Severity
+Matched
+Risk Score
+Indicators
+Details
 ```
 
-This provides stronger contextual evidence than any individual indicator.
+This structure allows analysts to understand which detection rule matched and why.
 
 ---
 
-## 13. Risk Scoring
+## Risk Scoring Methodology
 
-The initial scoring system should be transparent.
+Risk scores are generated from observable indicators associated with individual detection rules.
 
-| Indicator | Weight |
-|---|---|
-| Lookalike domain | 25 |
-| Reply-To mismatch | 20 |
-| New conversation participant | 20 |
-| Authentication anomaly | 15 |
-| New infrastructure | 10 |
-| Behavioral anomaly | 10 |
+The score is intended to communicate the relative contribution of a detection to the overall analysis.
 
-```text
-risk_score = Σ indicator_weight
-```
+Each individual detection score is capped at 100. The combined analysis risk score is calculated from matched detections.
 
-Weights should eventually be configurable through a rules/configuration system.
+> The score should not be treated as a standalone verdict.
 
----
+Analysts should inspect:
 
-## 14. Risk Categories
-
-| Score Range | Category |
-|---|---|
-| 0–29 | LOW |
-| 30–59 | MEDIUM |
-| 60–79 | HIGH |
-| 80–100+ | CRITICAL |
-
-These thresholds are starting points for the prototype and should be evaluated using test data.
+- Matched rules
+- Indicators
+- Authentication results
+- Infrastructure information
+- Sender identity
+- Conversation context
 
 ---
 
-## 15. Explainability
+## Explainability
 
-Every detection must provide evidence.
+The detection methodology prioritizes explainable evidence.
 
 **Bad:**
 
 ```text
-Risk: 85
+Risk = 85
 ```
 
 **Good:**
 
 ```text
-Risk: 85
-Reasons:
-[+] Sender differs from established participant
-[+] Observed domain resembles known participant domain
-[+] Reply-To differs from known identity
-[+] New sending infrastructure detected
-[+] Authentication anomaly detected
+Rule:           BEC-001 — Lookalike Domain
+Known domain:   supplier.com
+Observed domain: supp1ier.com
+Indicators:
+- Domain mismatch
+- High domain similarity
 ```
 
-The analyst should be able to trace the score back to individual observations.
+This allows a SOC analyst to investigate the underlying evidence.
 
 ---
 
-## 16. False Positive Handling
+## False Positives
 
-The system must account for legitimate cases such as:
+Some legitimate email messages can trigger individual indicators.
 
-- Shared mailboxes
-- Mailing lists
-- Forwarding services
-- Customer support platforms
-- CRM systems
-- Third-party email providers
-- Legitimate aliases
-- Delegated mailboxes
-- Email security gateways
+Examples include:
 
-Detection logic should therefore favor multiple correlated indicators over isolated anomalies.
+- Legitimate changes to mail infrastructure
+- Temporary sending services
+- Forwarding systems
+- Third-party mail providers
+- Legitimate Reply-To addresses
+- New employees joining a conversation
+- Changes to normal communication schedules
+
+For this reason, detections should be interpreted using the complete analysis context.
 
 ---
 
-## 17. Machine Learning Extension
+## False Negatives
 
-Machine learning is a future layer rather than an MVP requirement.
+The system may fail to identify attacks when:
+
+- The attacker uses the legitimate mailbox
+- Baseline information is incomplete
+- Relevant headers are unavailable
+- Authentication information is missing
+- Infrastructure information cannot be established
+- Communication behavior closely resembles normal behavior
+
+The system therefore treats detection as an investigation aid rather than a guarantee of malicious activity.
+
+---
+
+## Future Methodology
+
+Future development may introduce statistical and machine-learning-based behavioral detection.
 
 Potential models include:
 
 - Isolation Forest
 - Local Outlier Factor
 - One-Class SVM
-- Autoencoder
+- Autoencoder-based anomaly detection
 
-**Potential feature vector:**
-
-```json
-[
-    "sender_frequency",
-    "recipient_frequency",
-    "sending_hour",
-    "response_time",
-    "participant_count",
-    "subject_similarity",
-    "attachment_frequency",
-    "infrastructure_frequency",
-    "domain_similarity"
-]
-```
-
-The ML system should operate alongside deterministic rules:
-
-```text
-              Email
-                │
-        ┌───────┴────────┐
-        ▼                ▼
- Deterministic       ML Model
- Detection           Detection
-        │                │
-        └───────┬────────┘
-                ▼
-          Evidence Fusion
-                │
-                ▼
-           Risk Scoring
-```
-
----
-
-## 18. Evaluation
-
-The detector should be evaluated using controlled synthetic data.
-
-**Initial dataset:**
-
-- Legitimate conversations
-- Lookalike-domain attacks
-- Display-name impersonation
-- Reply-To manipulation
-- Thread hijacking
-- Authentication anomalies
-- Infrastructure anomalies
-- Behavioral anomalies
-
-**Evaluation metrics:**
-
-- True Positives
-- True Negatives
-- False Positives
-- False Negatives
-- Precision
-- Recall
-- F1 Score
-- Detection Rate
-- False Positive Rate
-
----
-
-## 19. Detection Principle
-
-The central detection principle is:
-
-> An email should be evaluated against the context of the conversation it claims to belong to, rather than judged solely on the contents of the individual message.
-
-This principle drives the architecture of the project.
+The ML layer will remain separate from the deterministic detection engine so that rule-based and behavioral approaches can be evaluated independently.

@@ -1,335 +1,229 @@
 # Detection Rules
 
-## 1. Overview
+## Overview
 
-Email Clone Detector uses modular detection rules to identify indicators associated with email impersonation, Business Email Compromise, and conversation hijacking.
+Email Conversation Integrity Detection uses deterministic detection rules to identify suspicious inconsistencies in email identity, authentication, infrastructure, conversation participation, and communication behavior.
 
-Each rule should:
+Each rule produces structured detection information including:
 
-1. Have a unique identifier.
-2. Define a detection objective.
-3. Identify required evidence.
-4. Return structured detection results.
-5. Provide an explainable reason.
-6. Assign a configurable severity.
-7. Avoid claiming maliciousness based solely on one weak indicator.
-
----
-
-## 2. Rule Format
-
-Rules are stored as YAML files.
-
-```yaml
-id: BEC-001
-name: Lookalike Domain
-description: Detects a sender domain that closely resembles a known participant domain.
-severity: high
-category:
-  - impersonation
-  - bec
-signals:
-  - domain_similarity
-  - known_participant
-response:
-  score: 25
-```
+- Rule ID
+- Rule name
+- Severity
+- Match status
+- Risk score
+- Indicators
+- Details
 
 ---
 
-## 3. BEC-001 — Lookalike Domain
+## BEC-001 — Lookalike Domain
 
-**Objective:** Identify domains that closely resemble domains belonging to known conversation participants.
+**Purpose:** Detect domains that closely resemble a previously trusted sender domain.
 
 ```text
-Known:    supplier.com
-Observed: supp1ier.com
+Known domain:    supplier.com
+Observed domain: supp1ier.com
 ```
 
-**Indicators:** known participant domain, observed domain, domain similarity, participant history
+**Detection Logic:** The observed sender domain is compared with the known domain. A sufficiently similar but different domain can produce a detection.
 
-**Detection Logic:**
+**Indicators:**
+
+- Known domain
+- Observed domain
+- Domain mismatch
+- Domain similarity
+
+**Security Context:** Lookalike domains can be used to impersonate trusted organizations or business partners.
+
+---
+
+## BEC-002 — Reply-To Mismatch
+
+**Purpose:** Detect inconsistencies between the apparent sender and the Reply-To address.
 
 ```text
-IF
-    observed_domain != known_domain
-AND
-    similarity(observed_domain, known_domain) >= threshold
-THEN
-    generate BEC-001
+From:     John Smith <john@supplier.com>
+Reply-To: john.supplier@gmail.com
 ```
 
-**Considerations:** the detector must account for legitimate subsidiaries, aliases, newly registered domains, and legitimate third-party senders.
+**Detection Logic:** The Reply-To address is compared against the sender identity. A mismatch can become a detection indicator.
+
+**Indicators:**
+
+- Sender email
+- Reply-To email
+- Sender domain
+- Reply-To domain
+
+**Security Context:** Attackers may manipulate Reply-To addresses to redirect responses to an address they control.
 
 ---
 
-## 4. BEC-002 — Reply-To Mismatch
+## BEC-003 — Thread Participant Anomaly
 
-**Objective:** Detect unexpected differences between sender identity and reply destination.
+**Purpose:** Detect unexpected participants within an established conversation.
 
 ```text
-From:     bob@supplier.com
-Reply-To: bob.external@gmail.com
+Known participants: alice@company.com, bob@supplier.com
+Observed:            alice@company.com, bob@supplier.com, attacker@example.net
 ```
 
-**Detection Logic:**
+**Detection Logic:** Observed participants are compared against the supplied participant baseline. A participant that is not present in the baseline can trigger the rule.
+
+> **Important:** The participant baseline must contain all expected legitimate participants. An incomplete baseline can produce false positives.
+
+**Security Context:** Unexpected participants may indicate conversation manipulation, unauthorized forwarding, or thread hijacking.
+
+---
+
+## BEC-004 — Authentication Anomaly
+
+**Purpose:** Evaluate available email authentication results.
+
+**Signals:** The current implementation considers:
+
+- SPF
+- DKIM
+- DMARC
+
+**Detection Logic:** Authentication information available in the analyzed message is evaluated for anomalous or failed authentication results.
+
+**Security Context:** Authentication failures can provide supporting evidence of spoofing or sender identity manipulation. Authentication anomalies should be interpreted alongside other indicators because legitimate mail infrastructure can also produce authentication failures.
+
+---
+
+## BEC-005 — Sender Infrastructure Anomaly
+
+**Purpose:** Detect changes in infrastructure associated with a known sender.
+
+**Current indicators:**
+
+- Previously unseen sending host
+- Previously unseen sending IP address
 
 ```text
-IF
-    Reply-To exists
-AND
-    Reply-To differs from known sender identity
-AND
-    Reply-To is not present in the participant baseline
-THEN
-    generate BEC-002
+Known host:    mail.supplier.com
+Observed host: new-mail.example.net
 ```
+
+**Detection Logic:** Observed infrastructure is compared against the supplied known infrastructure baseline.
+
+**Future enrichment:**
+
+- ASN
+- Geographic origin
+- Reverse DNS
+- Infrastructure reputation
+- Threat-intelligence enrichment
 
 ---
 
-## 5. BEC-003 — New Conversation Participant
+## BEC-006 — Conversation Hijacking
 
-**Objective:** Detect a previously unseen sender appearing within an established conversation.
+**Purpose:** Detect suspicious messages that appear to continue an established business conversation while containing multiple inconsistencies.
+
+**Detection context** — the rule can consider information involving:
+
+- Sender identity
+- Headers
+- Infrastructure
+- Authentication
+- Participants
+- Conversation structure
+
+**Detection Logic:** The rule combines available conversation and sender indicators to identify suspicious continuation of an established conversation.
+
+**Security Context:** Conversation hijacking can be particularly difficult to identify when an attacker attempts to preserve familiar subjects, participants, and communication context.
+
+---
+
+## BEC-007 — Behavioral Communication Anomaly
+
+**Purpose:** Detect communication behavior that differs from an established sender or conversation baseline.
+
+**Current implementation:** The MVP currently includes deterministic time-of-day behavioral analysis.
 
 ```text
-Existing participants: alice@company.com, bob@supplier.com
-New:                   bob@supp1ier.com
+Established behavior:   08:00–18:00
+Observed message:       02:47
 ```
 
-**Detection Logic:**
+The observed behavior can become an anomaly indicator when it falls outside the supplied baseline.
+
+**Future indicators:**
+
+- Sender frequency
+- Recipient frequency
+- Sending hour
+- Response time
+- Participant count
+- Subject similarity
+- Body similarity
+- Attachment frequency
+- Sender infrastructure frequency
+- Domain similarity
+- Reply-To frequency
+
+---
+
+## Severity and Risk
+
+Each detection returns a severity value and risk contribution.
+
+The risk score is generated from observable indicators associated with the rule. Individual detection scores are capped at 100.
+
+The overall analysis can combine risk contributions from matched detections.
+
+> The score is intended to support analyst investigation and should not be treated as proof of malicious activity.
+
+---
+
+## Detection Evidence
+
+Each matched rule should provide evidence through its structured result.
 
 ```text
-IF
-    sender is not present in conversation baseline
-AND
-    sender resembles an existing participant
-THEN
-    generate BEC-003
+Rule ID:    BEC-001
+Rule Name:  Lookalike Domain
+Matched:    true
+Indicators:
+- Domain mismatch
+- Domain similarity
+Details:
+Known domain = supplier.com
+Observed domain = supp1ier.com
 ```
 
----
-
-## 6. BEC-004 — Authentication Anomaly
-
-**Objective:** Detect unexpected SPF, DKIM, or DMARC authentication results.
-
-**Indicators:** SPF failure, DKIM failure, DMARC failure, authentication policy mismatch
-
-**Detection Logic:**
-
-Authentication anomalies should be correlated with other indicators.
-
-```text
-IF
-    authentication_failure = true
-AND
-    identity_anomaly = true
-THEN
-    increase detection confidence
-```
-
-> Authentication failure alone should not automatically classify an email as malicious.
+This structure allows downstream API consumers and SIEM integrations to preserve the reasoning behind the detection.
 
 ---
 
-## 7. BEC-005 — Sender Infrastructure Anomaly
+## Rule Independence
 
-**Objective:** Identify sending infrastructure that differs from historical observations for a known participant.
+Detection rules are designed to operate independently. This provides several advantages:
 
-**Indicators:** new IP, new hostname, new ASN, new mail server, unexpected infrastructure
-
-**Detection Logic:**
-
-```text
-IF
-    sender is known
-AND
-    infrastructure is previously unseen
-THEN
-    generate infrastructure anomaly
-```
+- Individual rules can be tested independently.
+- New rules can be added without redesigning existing rules.
+- Analysts can identify exactly which indicators triggered.
+- Risk contributions can remain explainable.
+- Detection results can be normalized for SIEM platforms.
 
 ---
 
-## 8. BEC-006 — Conversation Hijacking
+## Future Rules
 
-**Objective:** Identify messages that appear to continue an existing conversation while introducing significant identity or structural inconsistencies.
+Potential future detection rules may include:
 
-Potential indicators: new participant, identity mismatch, Reply-To mismatch, authentication anomaly, new infrastructure, thread metadata anomaly.
+- Sender reputation anomaly
+- Domain age anomaly
+- Geographic sender anomaly
+- ASN anomaly
+- Attachment behavior anomaly
+- Unusual recipient relationship
+- Conversation timing anomaly
+- Message similarity anomaly
+- Mailbox forwarding-rule indicators
+- Threat-intelligence correlation
 
-**Example Correlation:**
-
-```text
-BEC-003 + BEC-002 + BEC-004  →  may contribute to a BEC-006 detection
-```
-
----
-
-## 9. BEC-007 — Behavioral Communication Anomaly
-
-**Objective:** Identify communication behavior that deviates from an established baseline.
-
-Potential signals: unusual sending time, unusual recipient, unusual frequency, unusual response time, unusual attachment behavior.
-
-This rule is intended to become more sophisticated as historical data becomes available.
-
----
-
-## 10. BEC-008 — Display Name Impersonation
-
-**Objective:** Detect cases where a known participant's display name is associated with a different email address.
-
-```text
-Known:    John Smith <john@company.com>
-Observed: John Smith <john@attacker.example>
-```
-
-**Detection Logic:**
-
-```text
-IF
-    observed_display_name matches known_display_name
-AND
-    observed_address differs from known_address
-THEN
-    generate BEC-008
-```
-
----
-
-## 11. BEC-009 — Thread Metadata Anomaly
-
-**Objective:** Identify inconsistencies in email threading metadata.
-
-**Relevant fields:** Message-ID, In-Reply-To, References, Subject
-
-Potential indicators: missing expected references, unexpected parent Message-ID, inconsistent thread relationships.
-
-> Thread metadata should be treated as supporting evidence rather than a definitive identity mechanism.
-
----
-
-## 12. BEC-010 — Suspicious Conversation Clone
-
-**Objective:** Identify messages that appear to reproduce an established conversation while introducing identity or infrastructure anomalies.
-
-Potential signals: high subject similarity, high body similarity, same recipients, same signature, different sender, different domain, different infrastructure.
-
-**Example:**
-
-```text
-Conversation:  Invoice #48291 (×3)
-Observed:      Invoice #48291
-  Content similarity:  High
-  Sender identity:     Different
-  Domain:              Similar
-  Infrastructure:      New
-```
-
----
-
-## 13. Rule Correlation
-
-Rules should be independently testable but capable of correlation.
-
-```text
-BEC-001  Lookalike Domain
-   │
-   ├──────────────┐
-   ▼              ▼
-BEC-002       BEC-004
-   │              │
-   └──────┬───────┘
-          ▼
-       BEC-006
-```
-
-This allows the system to distinguish between isolated anomalies and multiple correlated indicators.
-
----
-
-## 14. Severity
-
-Initial severity categories:
-
-- LOW
-- MEDIUM
-- HIGH
-- CRITICAL
-
-Severity should be based on the rule and contextual evidence, and should remain configurable.
-
----
-
-## 15. Detection Event Format
-
-Every rule should produce a consistent result.
-
-```json
-{
-  "rule_id": "BEC-001",
-  "rule_name": "Lookalike Domain",
-  "matched": true,
-  "severity": "high",
-  "score": 25,
-  "evidence": {
-    "known_domain": "supplier.com",
-    "observed_domain": "supp1ier.com",
-    "similarity": 0.91
-  },
-  "explanation": "Observed sender domain closely resembles a known conversation participant domain."
-}
-```
-
----
-
-## 16. Rule Design Principles
-
-**Evidence Based**
-Rules must rely on observable data.
-
-**Explainable**
-Analysts must understand why a rule triggered.
-
-**Modular**
-Rules should operate independently.
-
-**Testable**
-Each rule should have positive and negative test cases.
-
-**Context Aware**
-Rules should use conversation history whenever possible.
-
-**Conservative**
-Weak indicators should not automatically produce high-confidence conclusions.
-
----
-
-## 17. Rule Testing
-
-Each rule should have a positive test, a negative test, edge cases, and false-positive scenarios.
-
-**Example — BEC-001:**
-
-| Case | Domains |
-|---|---|
-| Positive | `supplier.com` → `supp1ier.com` |
-| Negative | `supplier.com` → `supplier.co.uk` |
-| Edge | `supplier.com` → `supplier.co` |
-
----
-
-## 18. Planned Rule Expansion
-
-Future rules may include:
-
-- BEC-011 — Domain Age Anomaly
-- BEC-012 — New Recipient Anomaly
-- BEC-013 — Unusual Attachment Pattern
-- BEC-014 — Suspicious URL Change
-- BEC-015 — Sender Reputation Anomaly
-- BEC-016 — Conversation Timing Anomaly
-- BEC-017 — Payment Instruction Change
-- BEC-018 — Account Compromise Behavior
-
-These should only be implemented when the required evidence and data sources are available.
+Future rules should maintain the same explainable structure used by the existing detection engine.

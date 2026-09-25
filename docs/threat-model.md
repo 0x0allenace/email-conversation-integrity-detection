@@ -1,305 +1,246 @@
 # Threat Model
 
-## 1. Purpose
+## Overview
 
-This document defines the threats that Email Clone Detector is intended to identify and the assumptions made by the detection system.
+Email Conversation Integrity Detection is designed to identify suspicious email activity associated with Business Email Compromise (BEC), sender impersonation, and conversation hijacking.
 
-The primary focus is email-based impersonation and Business Email Compromise involving established business conversations.
+The threat model focuses on attacks where an adversary attempts to make a malicious email appear to be part of a legitimate business conversation.
 
 ---
 
-## 2. Security Objective
+## Security Objective
 
 **Primary objective:**
 
-> Detect email messages that appear to originate from an established participant but contain evidence suggesting impersonation, conversation hijacking, or abnormal communication behavior.
+> Identify inconsistencies between an incoming email and the established identity, participants, infrastructure, authentication information, and communication behavior associated with a trusted conversation.
 
-**Secondary objectives include:**
-
-- Provide explainable evidence
-- Reduce time to detection
-- Assist SOC investigations
-- Generate structured detection events
-- Support SIEM integration
+The system is designed to provide explainable evidence that can support SOC investigation.
 
 ---
 
-## 3. Threat Actors
+## Assets
 
-The system considers several attacker profiles.
-
-### 3.1 External Impersonator
-
-An attacker who does not control a legitimate participant's mailbox.
-
-Potential techniques:
-
-- Lookalike domain
-- Display-name spoofing
-- Reply-To manipulation
-- Thread cloning
-- Phishing
-
-### 3.2 Compromised Account Attacker
-
-An attacker who has obtained access to a legitimate mailbox.
-
-Potential behavior:
-
-- Conversation hijacking
-- Credential abuse
-- Financial fraud
-- Malicious links
-- Malicious attachments
-- Recipient manipulation
-
-This scenario is more difficult because the attacker may use a legitimate sender identity.
-
-### 3.3 Infrastructure Impersonator
-
-An attacker who attempts to reproduce legitimate email infrastructure or use infrastructure that appears trustworthy.
-
-Potential indicators:
-
-- Similar domains
-- Similar hostnames
-- New mail servers
-- Unexpected IP addresses
-- Unexpected sending infrastructure
-
----
-
-## 4. Assets
-
-Potentially protected assets include:
+Relevant assets include:
 
 - Business email conversations
-- Employee identities
-- Customer communications
-- Supplier communications
-- Financial information
-- Contracts
-- Invoices
-- Credentials
-- Internal business information
-- Attachments
+- Sender identities
+- Recipient identities
+- Email headers
+- Authentication information
+- Conversation history
+- Sender infrastructure information
+- Detection results
+- Risk scores
+- SIEM events
+- Persisted analysis records
 
 ---
 
-## 5. Trust Boundaries
+## Threat Actors
 
-```text
-                 Internet
-                    │
-                    ▼
-             External Sender
-                    │
-                    ▼
-             Email Gateway
-                    │
-                    ▼
-             Email Platform
-                    │
-                    ▼
-          Email Clone Detector
-                    │
-          ┌─────────┴─────────┐
-          ▼                   ▼
-         SOC                Users
-```
+Potential threat actors include:
 
-The detector should treat all externally received email data as untrusted input.
+**External Attackers**
+Attackers operating outside the organization who attempt to impersonate employees, suppliers, customers, or other trusted contacts.
+
+**Business Email Compromise Operators**
+Attackers attempting to manipulate business communication for financial, credential, or information-theft objectives.
+
+**Compromised Account Users**
+Attackers operating from a legitimately compromised mailbox. This scenario is particularly challenging because the sender identity may appear legitimate.
+
+**Infrastructure Operators**
+Attackers controlling domains, hosts, or infrastructure used to send impersonation or malicious messages.
 
 ---
 
-## 6. Threat Scenarios
+## Threat Scenarios
 
-### TM-001 — Lookalike Domain
+### T1 — Lookalike Domain
 
-**Description:** An attacker registers or controls a domain visually similar to a legitimate participant.
+An attacker registers or controls a domain visually similar to a trusted domain.
 
 ```text
-supplier.com
-supp1ier.com
+Trusted:  supplier.com
+Attacker: supp1ier.com
 ```
 
-**Attack Objective:** Convince recipients that the message originated from the legitimate organization.
+**Potential detection:** BEC-001 — Lookalike Domain
 
-**Detection Opportunities:** domain similarity, participant history, display name, conversation context
+### T2 — Reply-To Manipulation
 
-### TM-002 — Display Name Impersonation
+An attacker uses a legitimate-looking sender identity while directing replies to another address.
 
-**Description:** An attacker uses the display name of a legitimate participant.
+```text
+From:     john@supplier.com
+Reply-To: john.supplier@gmail.com
+```
 
-| | Identity |
+**Potential detection:** BEC-002 — Reply-To Mismatch
+
+### T3 — Conversation Participant Injection
+
+An attacker inserts an unexpected participant into an established conversation.
+
+**Potential detection:** BEC-003 — Thread Participant Anomaly
+
+### T4 — Authentication Anomaly
+
+An email contains authentication results that are inconsistent with expectations.
+
+Relevant signals include:
+
+- SPF
+- DKIM
+- DMARC
+
+**Potential detection:** BEC-004 — Authentication Anomaly
+
+### T5 — Infrastructure Change
+
+A known sender suddenly uses previously unseen infrastructure.
+
+Examples include:
+
+- New sending host
+- New sending IP address
+
+**Potential detection:** BEC-005 — Sender Infrastructure Anomaly
+
+### T6 — Conversation Hijacking
+
+An attacker attempts to continue an existing conversation while manipulating sender identity, headers, infrastructure, participants, or other conversation characteristics.
+
+**Potential detection:** BEC-006 — Conversation Hijacking
+
+### T7 — Behavioral Anomaly
+
+A message is inconsistent with established communication behavior.
+
+The current MVP focuses on deterministic time-of-day behavior.
+
+**Potential detection:** BEC-007 — Behavioral Communication Anomaly
+
+---
+
+## Attack Surface
+
+The main attack surface includes:
+
+```text
+                    Email Message
+                         │
+             ┌───────────┼───────────┐
+             ▼           ▼           ▼
+          Headers     Identity    Content
+             │           │           │
+             └───────────┼───────────┘
+                         ▼
+                  Analysis Engine
+                         │
+             ┌───────────┴───────────┐
+             ▼                       ▼
+         Database                   SIEM
+```
+
+External integrations introduce additional security considerations.
+
+---
+
+## Trust Boundaries
+
+**Email Input Boundary**
+`.eml` files enter the application through the API. The application should treat email content as untrusted input.
+
+**Database Boundary**
+Analysis results are persisted to PostgreSQL. Database credentials must be protected and should not be committed to source control.
+
+**SIEM Boundary**
+Detection events may leave the application and be transmitted to external SIEM infrastructure. SIEM credentials and tokens must be protected.
+
+---
+
+## Security Assumptions
+
+The current system assumes:
+
+- The analysis environment is authorized to inspect the supplied email.
+- Known participant information is supplied by a trusted source.
+- Known infrastructure information is reasonably accurate.
+- The API and database environment are appropriately protected.
+- SIEM credentials are stored securely.
+- The analysis host is trusted.
+
+---
+
+## Threats to the Detection System
+
+The detector itself can also be targeted.
+
+**Malformed Email Input**
+Attackers may provide malformed or unusual email messages. The parser should therefore handle malformed input safely and avoid assuming that headers are always present.
+
+**Baseline Manipulation**
+If an attacker can influence the known baseline, detection accuracy may be reduced.
+
+**SIEM Credential Exposure**
+SIEM tokens, usernames, passwords, and API keys must not be stored directly in source code.
+
+**Database Exposure**
+Persisted email analysis may contain sensitive metadata. Database access should therefore be restricted.
+
+**Alert Flooding**
+An attacker could generate large numbers of suspicious messages to increase alert volume. Future implementations may require rate limiting, aggregation, and alert deduplication.
+
+---
+
+## Mitigations
+
+Current and planned mitigations include:
+
+| Threat | Mitigation |
 |---|---|
-| Known | `Bob Smith <bob@supplier.com>` |
-| Observed | `Bob Smith <attacker@malicious.example>` |
-
-**Detection Opportunities:** display-name match, address mismatch, participant baseline, domain analysis
-
-### TM-003 — Reply-To Manipulation
-
-**Description:** The attacker causes replies to be delivered to an address controlled by the attacker.
-
-```text
-From:     bob@supplier.com
-Reply-To: attacker@example.com
-```
-
-**Detection Opportunities:** From/Reply-To mismatch, historical Reply-To baseline, domain reputation, participant history
-
-### TM-004 — Conversation Hijacking
-
-**Description:** An attacker attempts to insert a malicious message into an existing business conversation.
-
-Potential goals include:
-
-- Payment redirection
-- Invoice fraud
-- Credential theft
-- Malware delivery
-- Data theft
-
-**Detection Opportunities:** thread metadata, Message-ID, In-Reply-To, References, participant changes, sender identity, infrastructure, authentication
-
-### TM-005 — Conversation Cloning
-
-**Description:** An attacker reproduces portions of a legitimate conversation to create a convincing malicious message.
-
-Potential copied elements: subject, signature, previous message content, formatting, recipient list, business terminology.
-
-**Detection Opportunities:** content similarity, conversation history, identity mismatch, new participant, new infrastructure
-
-### TM-006 — Compromised Legitimate Account
-
-**Description:** An attacker sends email using a genuinely compromised account.
-
-```text
-From: legitimate-user@company.com
-```
-
-The sender identity may therefore appear valid.
-
-**Detection Opportunities:** unusual sending time, unusual recipients, new infrastructure, behavioral anomaly, unexpected attachments, unexpected links, authentication context
-
-**Limitation:** A legitimate account compromise may be difficult to distinguish from normal activity using email metadata alone. The detector should therefore produce contextual evidence rather than claim certainty.
-
-### TM-007 — Authentication Manipulation
-
-**Description:** An attacker sends messages that produce unexpected SPF, DKIM, or DMARC results.
-
-**Detection Opportunities:** SPF, DKIM, DMARC, Authentication-Results
-
-Authentication results should be treated as one component of a broader detection decision.
-
-### TM-008 — Infrastructure Anomaly
-
-**Description:** A known sender suddenly sends from infrastructure not previously associated with the sender.
-
-Potential indicators: new IP, new ASN, new hostname, new mail server, unexpected geographic origin.
-
-### TM-009 — Behavioral Anomaly
-
-**Description:** The message is technically valid but deviates from established communication behavior.
-
-Examples: unusual sending hour, unusual recipient, unusual response time, unusual attachment behavior, unusual communication frequency.
+| Lookalike domain | Domain similarity analysis |
+| Reply-To manipulation | Reply-To mismatch detection |
+| Participant injection | Participant baseline analysis |
+| Authentication anomalies | SPF/DKIM/DMARC analysis |
+| Infrastructure changes | Host/IP baseline comparison |
+| Conversation hijacking | Multi-indicator conversation analysis |
+| Behavioral anomalies | Behavioral baseline comparison |
+| Credential exposure | Environment-based configuration |
+| Detection opacity | Explainable detection results |
+| Malformed input | Structured parsing and validation |
 
 ---
 
-## 7. Attack Tree
+## Limitations
 
-```text
-Compromise Business Conversation
-│
-├── Impersonate Participant
-│   ├── Lookalike Domain
-│   ├── Display Name Spoofing
-│   └── Reply-To Manipulation
-│
-├── Hijack Conversation
-│   ├── Clone Subject
-│   ├── Clone Previous Messages
-│   ├── Insert New Participant
-│   └── Manipulate Thread Metadata
-│
-├── Abuse Legitimate Account
-│   ├── Compromised Credentials
-│   ├── Unusual Sending Pattern
-│   └── New Infrastructure
-│
-└── Deliver Malicious Objective
-    ├── Payment Fraud
-    ├── Credential Theft
-    ├── Malware
-    └── Sensitive Data Theft
-```
+The current system cannot guarantee detection of all email attacks.
+
+Important limitations include:
+
+- A compromised legitimate mailbox may appear legitimate.
+- Incomplete baselines can produce false positives or false negatives.
+- Missing authentication headers reduce available evidence.
+- Legitimate infrastructure changes can resemble malicious activity.
+- Behavioral analysis is currently deterministic and limited.
+- External threat-intelligence enrichment is not currently required for detection.
+- Machine-learning anomaly detection has not yet been implemented.
 
 ---
 
-## 8. Security Assumptions
+## Future Threat Modeling
 
-The initial system assumes:
+Future development may extend the threat model to include:
 
-1. Email messages can be collected for authorized analysis.
-2. Relevant headers are available.
-3. Historical messages are available to establish a baseline.
-4. Email authentication results may be available.
-5. Some legitimate sender history exists.
-6. The detector operates within an authorized environment.
+- OAuth token compromise
+- Microsoft 365 mailbox compromise
+- Gmail account compromise
+- Internal account takeover
+- Malicious forwarding rules
+- Mailbox persistence
+- Advanced conversation manipulation
+- Threat-intelligence correlation
+- Automated mailbox monitoring
 
----
-
-## 9. Limitations
-
-The system cannot guarantee that an email is malicious.
-
-**Legitimate Account Compromise**
-An attacker using a legitimate mailbox may appear identical to the legitimate sender.
-
-**Forwarding**
-Forwarding services can change authentication and infrastructure characteristics.
-
-**Shared Mailboxes**
-Multiple legitimate users may communicate from the same address.
-
-**Third-Party Services**
-CRM, marketing, ticketing, and support systems may legitimately send messages on behalf of organizations.
-
-**Limited Historical Data**
-A new legitimate sender may initially appear anomalous.
-
-**Sophisticated Attackers**
-An attacker with extensive knowledge of the target's communication patterns may reduce detectable anomalies.
-
----
-
-## 10. Defensive Response
-
-The detector should initially focus on detection and notification, not destructive automated response.
-
-Potential responses:
-
-- Create SOC alert
-- Create investigation event
-- Notify security team
-- Notify affected user
-- Increase message risk
-- Send event to SIEM
-- Create investigation case
-
-> Automatic deletion or quarantine should require a separate policy and authorization layer.
-
----
-
-## 11. Threat Model Principle
-
-The system should answer:
-
-> "What evidence indicates that this message is inconsistent with the established communication context?"
-
-rather than:
-
-> "Can the system prove that this email is malicious?"
-
-This distinction is important because email security detection is probabilistic and contextual.
+These capabilities will be considered as the system expands beyond `.eml` analysis.
