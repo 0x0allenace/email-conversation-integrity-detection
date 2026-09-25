@@ -1,0 +1,133 @@
+"""API service layer for Email Conversation Integrity Detection."""
+
+from __future__ import annotations
+
+from typing import Any
+
+from sqlalchemy.orm import Session
+
+from src.database.models import Analysis, Detection
+from src.database.repository import AnalysisRepository
+from src.engine.detection_engine import DetectionEngine
+
+
+class AnalysisService:
+    """Provide an API-facing interface to the detection engine."""
+
+    def __init__(
+        self,
+        detection_engine: DetectionEngine | None = None,
+        repository: AnalysisRepository | None = None,
+    ) -> None:
+        """Initialize the analysis service."""
+
+        self.detection_engine = (
+            detection_engine
+            if detection_engine is not None
+            else DetectionEngine()
+        )
+
+        self.repository = (
+            repository
+            if repository is not None
+            else AnalysisRepository()
+        )
+
+    def analyze_email(
+        self,
+        *,
+        email_file: str,
+        known_domain: str,
+        known_display_name: str,
+        known_participants: list[str],
+        known_hosts: list[str],
+        known_ip_addresses: list[str],
+        known_behavior: dict[str, Any],
+        db: Session | None = None,
+    ) -> dict[str, Any]:
+        """Analyze an email and optionally persist the analysis result."""
+
+        result = self.detection_engine.analyze(
+            file_path=email_file,
+            known_domain=known_domain,
+            known_display_name=known_display_name,
+            known_participants=known_participants,
+            known_hosts=known_hosts,
+            known_ip_addresses=known_ip_addresses,
+            known_behavior=known_behavior,
+        )
+
+        if db is None:
+            return result
+
+        email_data = result["email"]
+        identity_data = result["identity"]
+        detections_data = result["detections"]
+
+        analysis = Analysis(
+            email_message_id=email_data.get("message_id"),
+            sender_email=identity_data["email_address"],
+            sender_domain=identity_data["domain"],
+            subject=email_data.get("subject"),
+            known_domain=known_domain,
+            known_display_name=known_display_name,
+            risk_score=sum(
+                detection["risk_score"]
+                for detection in detections_data
+                if detection["matched"]
+            ),
+            result=result,
+        )
+
+        for detection_data in detections_data:
+            detection = Detection(
+                rule_id=detection_data["rule_id"],
+                rule_name=detection_data["rule_name"],
+                severity=detection_data["severity"],
+                matched=detection_data["matched"],
+                risk_score=detection_data["risk_score"],
+                indicators=detection_data.get(
+                    "indicators",
+                    [],
+                ),
+                details=detection_data.get(
+                    "details",
+                    {},
+                ),
+            )
+
+            analysis.detections.append(
+                detection
+            )
+
+        db.add(analysis)
+        db.commit()
+        db.refresh(analysis)
+
+        return result
+
+    def get_analysis(
+        self,
+        *,
+        db: Session,
+        analysis_id: int,
+    ) -> dict[str, Any] | None:
+        """Retrieve one persisted analysis by ID."""
+
+        return self.repository.get_analysis(
+            db,
+            analysis_id,
+        )
+
+    def list_analyses(
+        self,
+        *,
+        db: Session,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        """Retrieve recent persisted analyses."""
+
+        return self.repository.list_analyses(
+            db,
+            limit=limit,
+        )

@@ -1,0 +1,194 @@
+# ============================================================
+# Email Conversation Integrity Detection
+# Git Ignore Rules
+# ============================================================
+
+# ------------------------------------------------------------
+# Python
+# ------------------------------------------------------------
+
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+
+# Python build/package artifacts
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+# Coverage
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+.tox/
+.nox/
+
+# Type checking / linting caches
+.mypy_cache/
+.pyre/
+.pytype/
+.ruff_cache/
+
+# ------------------------------------------------------------
+# Virtual environments
+# ------------------------------------------------------------
+
+.venv/
+venv/
+env/
+ENV/
+.env/
+.python-version
+
+# ------------------------------------------------------------
+# Environment variables and secrets
+# ------------------------------------------------------------
+
+.env
+.env.*
+!.env.example
+
+# Local secret/config files
+*.secret
+*.secrets
+secrets/
+credentials/
+credentials.json
+
+# ------------------------------------------------------------
+# macOS
+# ------------------------------------------------------------
+
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Finder metadata
+Icon
+._*
+
+# ------------------------------------------------------------
+# IDE / Editors
+# ------------------------------------------------------------
+
+.vscode/
+.idea/
+*.iml
+
+# Vim
+*.swp
+*.swo
+*~
+
+# ------------------------------------------------------------
+# Logs
+# ------------------------------------------------------------
+
+*.log
+logs/
+
+# ------------------------------------------------------------
+# Temporary files
+# ------------------------------------------------------------
+
+*.tmp
+*.temp
+*.bak
+*.backup
+*.swp
+*.swo
+
+# ------------------------------------------------------------
+# Local databases / database artifacts
+# ------------------------------------------------------------
+
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+
+# PostgreSQL local/runtime files
+postgres-data/
+postgres_data/
+pgdata/
+
+# ------------------------------------------------------------
+# Docker
+# ------------------------------------------------------------
+
+# Local Docker environment files
+docker-compose.override.yml
+docker-compose.local.yml
+
+# Docker runtime data
+docker-data/
+docker-volumes/
+
+# ------------------------------------------------------------
+# Test / generated artifacts
+# ------------------------------------------------------------
+
+test-results/
+coverage.xml
+junit.xml
+
+# Generated reports
+reports/generated/
+
+# ------------------------------------------------------------
+# Security-analysis generated artifacts
+# ------------------------------------------------------------
+
+# Local forensic/malware-analysis output
+evidence/
+artifacts/
+captures/
+pcaps/
+dumps/
+
+# Generated analysis output
+analysis-output/
+results/
+
+# ------------------------------------------------------------
+# Local sample data
+# ------------------------------------------------------------
+
+# Ignore locally generated samples, but keep repository samples
+samples/generated/
+samples/local/
+
+# ------------------------------------------------------------
+# Project-specific local files
+# ------------------------------------------------------------
+
+# Local development notes
+TODO.local.md
+NOTES.local.md
+
+# Local configuration
+config.local.*
+settings.local.*
+
+# ------------------------------------------------------------
+# OS / tooling metadata
+# ------------------------------------------------------------
+
+.Trashes/
+.fseventsd/
+.DocumentRevisions-V100/
+
+# ------------------------------------------------------------
+# Keep important repository files visible
+# ------------------------------------------------------------
+
+!.gitignore
+!README.md
+!LICENSE
+!requirements.txt
+!Dockerfile
+!docker-compose.yml

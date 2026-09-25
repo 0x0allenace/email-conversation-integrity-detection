@@ -1,0 +1,17 @@
+From: Bob Supplier <bob@supp1ier.com>
+To: Alice Company <alice@company.com>
+Subject: Invoice Update
+Date: Wed, 23 Sep 2026 10:35:00 +0100
+Message-ID: <invoice-update-002@supp1ier.com>
+In-Reply-To: <previous-message-001@company.com>
+References: <previous-message-001@company.com>
+Reply-To: bob@supp1ier.com
+Return-Path: <bob@supp1ier.com>
+Authentication-Results: example.com; spf=fail; dkim=fail; dmarc=fail
+
+Hello Alice,
+
+Please find the updated invoice attached.
+
+Regards,
+Bob Supplier

@@ -1,0 +1,19 @@
+From: Bob Supplier <bob@supplier.com>
+To: Alice Company <alice@company.com>
+Subject: Invoice Update
+Date: Wed, 23 Sep 2026 10:30:00 +0100
+Message-ID: <invoice-update-001@supplier.com>
+In-Reply-To: <previous-message-001@company.com>
+References: <previous-message-001@company.com>
+Reply-To: bob@supplier.com
+Return-Path: <bob@supplier.com>
+Received: from mail.supplier.com (mail.supplier.com [192.0.2.10]) by mx.company.com
+Received: from relay.supplier.com (relay.supplier.com [192.0.2.20]) by mail.supplier.com
+Authentication-Results: example.com; spf=pass; dkim=pass; dmarc=pass
+
+Hello Alice,
+
+Please find the updated invoice attached.
+
+Regards,
+Bob Supplier

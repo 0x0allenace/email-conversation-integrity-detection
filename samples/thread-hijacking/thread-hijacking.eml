@@ -1,0 +1,17 @@
+From: Unknown Finance <attacker@external-mail.com>
+To: Alice Company <alice@company.com>
+Subject: Re: Invoice Update
+Date: Wed, 23 Sep 2026 10:45:00 +0100
+Message-ID: <invoice-update-004@external-mail.com>
+In-Reply-To: <invoice-update-001@supplier.com>
+References: <previous-message-001@company.com> <invoice-update-001@supplier.com>
+Reply-To: attacker@external-mail.com
+Return-Path: <attacker@external-mail.com>
+Authentication-Results: example.com; spf=fail; dkim=fail; dmarc=fail
+
+Hello Alice,
+
+Please use the updated payment instructions below.
+
+Regards,
+Finance Team

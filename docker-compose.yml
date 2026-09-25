@@ -1,0 +1,52 @@
+services:
+  db:
+    image: postgres:17
+    container_name: ecid-postgres
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_DB: email_integrity
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U postgres -d email_integrity",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+    ports:
+      - "5432:5432"
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    image: ecid-api:latest
+    container_name: ecid-api
+    restart: unless-stopped
+
+    environment:
+      ECID_DB_HOST: db
+      ECID_DB_PORT: 5432
+      ECID_DB_NAME: email_integrity
+      ECID_DB_USER: postgres
+      ECID_DB_PASSWORD: postgres
+
+    ports:
+      - "8000:8000"
+
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  postgres_data:

@@ -1,0 +1,18 @@
+From: Bob Supplier <bob@supplier.com>
+To: Alice Company <alice@company.com>
+Subject: Re: Invoice Update
+Date: Wed, 23 Sep 2026 10:50:00 +0100
+Message-ID: <invoice-update-005@supplier.com>
+In-Reply-To: <invoice-update-001@supplier.com>
+References: <previous-message-001@company.com> <invoice-update-001@supplier.com>
+Reply-To: bob@supplier.com
+Return-Path: <bob@supplier.com>
+Received: from suspicious-mail.example (suspicious-mail.example [203.0.113.50]) by mx.company.com
+Authentication-Results: example.com; spf=pass; dkim=pass; dmarc=pass
+
+Hello Alice,
+
+Please review the updated payment instructions.
+
+Regards,
+Bob Supplier
