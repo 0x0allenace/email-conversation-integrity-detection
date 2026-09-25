@@ -1,9 +1,11 @@
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 
 from src.api.service import AnalysisService
 from src.engine.detection_engine import DetectionEngine
+from src.integrations.siem.service import SIEMService
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -158,3 +160,155 @@ def test_analysis_service_accepts_injected_detection_engine():
     )
 
     assert service.detection_engine is detection_engine
+
+
+def test_analysis_service_accepts_injected_siem_service():
+    """Test that the service accepts an injected SIEM service."""
+
+    siem_service = Mock(spec=SIEMService)
+
+    service = AnalysisService(
+        siem_service=siem_service,
+    )
+
+    assert service.siem_service is siem_service
+
+
+def test_analysis_service_without_siem_preserves_existing_behavior(
+    service,
+):
+    """Test that analysis still works when SIEM is not configured."""
+
+    assert service.siem_service is None
+
+    result = service.analyze_email(
+        email_file=str(LEGITIMATE_EMAIL),
+        known_domain="supplier.com",
+        known_display_name="Bob Supplier",
+        known_participants=KNOWN_PARTICIPANTS,
+        known_hosts=KNOWN_HOSTS,
+        known_ip_addresses=KNOWN_IP_ADDRESSES,
+        known_behavior=KNOWN_BEHAVIOR,
+    )
+
+    assert "email" in result
+    assert "detections" in result
+
+
+def test_analysis_service_dispatches_siem_events_without_database():
+    """Test that SIEM dispatch occurs when no database is provided."""
+
+    siem_service = Mock(spec=SIEMService)
+
+    service = AnalysisService(
+        siem_service=siem_service,
+    )
+
+    result = service.analyze_email(
+        email_file=str(LEGITIMATE_EMAIL),
+        known_domain="supplier.com",
+        known_display_name="Bob Supplier",
+        known_participants=KNOWN_PARTICIPANTS,
+        known_hosts=KNOWN_HOSTS,
+        known_ip_addresses=KNOWN_IP_ADDRESSES,
+        known_behavior=KNOWN_BEHAVIOR,
+    )
+
+    siem_service.dispatch_detections.assert_called_once()
+
+    call_kwargs = (
+        siem_service.dispatch_detections.call_args.kwargs
+    )
+
+    assert call_kwargs["detections"] == result["detections"]
+    assert call_kwargs["email"] == result["email"]
+    assert (
+        call_kwargs["authentication"]
+        == result["authentication"]
+    )
+    assert (
+        call_kwargs["infrastructure"]
+        == result["infrastructure"]
+    )
+    assert call_kwargs["conversation"] is None
+
+
+def test_analysis_service_dispatches_siem_events_after_persistence(
+    monkeypatch,
+):
+    """Test that SIEM dispatch occurs after database persistence."""
+
+    siem_service = Mock(spec=SIEMService)
+
+    service = AnalysisService(
+        siem_service=siem_service,
+    )
+
+    db = Mock()
+
+    call_order = []
+
+    def record_commit():
+        call_order.append("commit")
+
+    def record_dispatch(**kwargs):
+        call_order.append("dispatch")
+
+    db.commit.side_effect = record_commit
+    siem_service.dispatch_detections.side_effect = record_dispatch
+
+    service.analyze_email(
+        email_file=str(LEGITIMATE_EMAIL),
+        known_domain="supplier.com",
+        known_display_name="Bob Supplier",
+        known_participants=KNOWN_PARTICIPANTS,
+        known_hosts=KNOWN_HOSTS,
+        known_ip_addresses=KNOWN_IP_ADDRESSES,
+        known_behavior=KNOWN_BEHAVIOR,
+        db=db,
+    )
+
+    assert call_order == [
+        "commit",
+        "dispatch",
+    ]
+
+    db.add.assert_called_once()
+    db.commit.assert_called_once()
+    db.refresh.assert_called_once()
+    siem_service.dispatch_detections.assert_called_once()
+
+
+def test_analysis_service_forwards_detection_context_to_siem():
+    """Test that analysis context is forwarded to SIEM dispatch."""
+
+    siem_service = Mock(spec=SIEMService)
+
+    service = AnalysisService(
+        siem_service=siem_service,
+    )
+
+    result = service.analyze_email(
+        email_file=str(LEGITIMATE_EMAIL),
+        known_domain="supplier.com",
+        known_display_name="Bob Supplier",
+        known_participants=KNOWN_PARTICIPANTS,
+        known_hosts=KNOWN_HOSTS,
+        known_ip_addresses=KNOWN_IP_ADDRESSES,
+        known_behavior=KNOWN_BEHAVIOR,
+    )
+
+    call_kwargs = (
+        siem_service.dispatch_detections.call_args.kwargs
+    )
+
+    assert call_kwargs["detections"] == result["detections"]
+    assert call_kwargs["email"] == result["email"]
+    assert (
+        call_kwargs["authentication"]
+        == result["authentication"]
+    )
+    assert (
+        call_kwargs["infrastructure"]
+        == result["infrastructure"]
+    )

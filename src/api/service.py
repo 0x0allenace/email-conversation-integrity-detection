@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from src.database.models import Analysis, Detection
 from src.database.repository import AnalysisRepository
 from src.engine.detection_engine import DetectionEngine
+from src.integrations.siem.service import SIEMService
 
 
 class AnalysisService:
@@ -18,6 +19,7 @@ class AnalysisService:
         self,
         detection_engine: DetectionEngine | None = None,
         repository: AnalysisRepository | None = None,
+        siem_service: SIEMService | None = None,
     ) -> None:
         """Initialize the analysis service."""
 
@@ -32,6 +34,8 @@ class AnalysisService:
             if repository is not None
             else AnalysisRepository()
         )
+
+        self.siem_service = siem_service
 
     def analyze_email(
         self,
@@ -58,6 +62,8 @@ class AnalysisService:
         )
 
         if db is None:
+            self._dispatch_siem_events(result)
+
             return result
 
         email_data = result["email"]
@@ -104,7 +110,32 @@ class AnalysisService:
         db.commit()
         db.refresh(analysis)
 
+        self._dispatch_siem_events(result)
+
         return result
+
+    def _dispatch_siem_events(
+        self,
+        result: dict[str, Any],
+    ) -> None:
+        """Dispatch matched detection events when SIEM is configured."""
+
+        if self.siem_service is None:
+            return
+
+        self.siem_service.dispatch_detections(
+            detections=result["detections"],
+            email=result["email"],
+            authentication=result.get(
+                "authentication"
+            ),
+            infrastructure=result.get(
+                "infrastructure"
+            ),
+            conversation=result.get(
+                "conversation"
+            ),
+        )
 
     def get_analysis(
         self,
