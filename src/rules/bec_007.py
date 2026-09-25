@@ -30,29 +30,36 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
             [],
         )
 
+        typical_days = context.known_behavior.get(
+            "typical_days",
+            [],
+        )
+
         indicators: list[str] = []
 
-        observed_hour = self._extract_hour(email_date)
+        parsed_date = self._parse_date(email_date)
 
-        if observed_hour is None:
+        if parsed_date is None:
             return self._build_result(
                 matched=False,
                 indicators=indicators,
                 observed_hour=None,
                 typical_hours=typical_hours,
+                observed_weekday=None,
+                typical_days=typical_days,
             )
 
-        if not typical_hours:
-            return self._build_result(
-                matched=False,
-                indicators=indicators,
-                observed_hour=observed_hour,
-                typical_hours=typical_hours,
-            )
+        observed_hour = parsed_date.hour
+        observed_weekday = parsed_date.weekday()
 
-        if observed_hour not in typical_hours:
+        if typical_hours and observed_hour not in typical_hours:
             indicators.append(
                 "Message sent outside established communication hours"
+            )
+
+        if typical_days and observed_weekday not in typical_days:
+            indicators.append(
+                "Message sent outside established communication days"
             )
 
         matched = bool(indicators)
@@ -62,13 +69,15 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
             indicators=indicators,
             observed_hour=observed_hour,
             typical_hours=typical_hours,
+            observed_weekday=observed_weekday,
+            typical_days=typical_days,
         )
 
     @staticmethod
-    def _extract_hour(
+    def _parse_date(
         email_date: str,
-    ) -> int | None:
-        """Extract the local sending hour from an email Date header."""
+    ) -> datetime | None:
+        """Parse an email Date header into a datetime value."""
 
         if not email_date:
             return None
@@ -81,6 +90,21 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
         if not isinstance(parsed_date, datetime):
             return None
 
+        return parsed_date
+
+    @staticmethod
+    def _extract_hour(
+        email_date: str,
+    ) -> int | None:
+        """Extract the local sending hour from an email Date header."""
+
+        parsed_date = BehavioralCommunicationAnomalyRule._parse_date(
+            email_date
+        )
+
+        if parsed_date is None:
+            return None
+
         return parsed_date.hour
 
     def _build_result(
@@ -90,6 +114,8 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
         indicators: list[str],
         observed_hour: int | None,
         typical_hours: list[int],
+        observed_weekday: int | None,
+        typical_days: list[int],
     ) -> dict[str, Any]:
         """Build the standardized BEC-007 detection result."""
 
@@ -101,4 +127,6 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
             "indicators": indicators,
             "observed_hour": observed_hour,
             "typical_hours": typical_hours,
+            "observed_weekday": observed_weekday,
+            "typical_days": typical_days,
         }

@@ -6,6 +6,7 @@ def build_context(
     *,
     date: str,
     typical_hours: list[int],
+    typical_days: list[int] | None = None,
 ) -> DetectionContext:
     """Build a detection context for BEC-007 tests."""
 
@@ -47,6 +48,11 @@ def build_context(
         ],
         known_behavior={
             "typical_hours": typical_hours,
+            "typical_days": (
+                typical_days
+                if typical_days is not None
+                else []
+            ),
         },
     )
 
@@ -74,6 +80,7 @@ def test_bec_007_detects_unusual_sending_hour():
     )
 
     assert result["observed_hour"] == 2
+    assert result["observed_weekday"] == 2
 
 
 def test_bec_007_allows_normal_sending_hour():
@@ -93,6 +100,7 @@ def test_bec_007_allows_normal_sending_hour():
     assert result["indicators"] == []
 
     assert result["observed_hour"] == 10
+    assert result["observed_weekday"] == 2
 
 
 def test_bec_007_handles_missing_behavior_baseline():
@@ -110,3 +118,81 @@ def test_bec_007_handles_missing_behavior_baseline():
     assert result["rule_id"] == "BEC-007"
     assert result["matched"] is False
     assert result["indicators"] == []
+
+
+def test_bec_007_detects_unusual_sending_day():
+    """BEC-007 should detect a message sent outside normal days."""
+
+    rule = BehavioralCommunicationAnomalyRule()
+
+    context = build_context(
+        date="Sun, 27 Sep 2026 10:30:00 +0100",
+        typical_hours=list(range(8, 18)),
+        typical_days=list(range(5)),
+    )
+
+    result = rule.evaluate(context)
+
+    assert result["rule_id"] == "BEC-007"
+    assert result["matched"] is True
+
+    assert (
+        "Message sent outside established communication days"
+        in result["indicators"]
+    )
+
+    assert result["observed_hour"] == 10
+    assert result["observed_weekday"] == 6
+    assert result["typical_days"] == list(range(5))
+
+
+def test_bec_007_allows_normal_sending_day():
+    """BEC-007 should not flag a message sent during normal days."""
+
+    rule = BehavioralCommunicationAnomalyRule()
+
+    context = build_context(
+        date="Wed, 23 Sep 2026 10:30:00 +0100",
+        typical_hours=list(range(8, 18)),
+        typical_days=list(range(5)),
+    )
+
+    result = rule.evaluate(context)
+
+    assert result["rule_id"] == "BEC-007"
+    assert result["matched"] is False
+    assert result["indicators"] == []
+
+    assert result["observed_hour"] == 10
+    assert result["observed_weekday"] == 2
+    assert result["typical_days"] == list(range(5))
+
+
+def test_bec_007_detects_multiple_behavioral_anomalies():
+    """BEC-007 should report both hour and day anomalies."""
+
+    rule = BehavioralCommunicationAnomalyRule()
+
+    context = build_context(
+        date="Sun, 27 Sep 2026 02:30:00 +0100",
+        typical_hours=list(range(8, 18)),
+        typical_days=list(range(5)),
+    )
+
+    result = rule.evaluate(context)
+
+    assert result["rule_id"] == "BEC-007"
+    assert result["matched"] is True
+
+    assert (
+        "Message sent outside established communication hours"
+        in result["indicators"]
+    )
+
+    assert (
+        "Message sent outside established communication days"
+        in result["indicators"]
+    )
+
+    assert result["observed_hour"] == 2
+    assert result["observed_weekday"] == 6
