@@ -268,3 +268,59 @@ def test_bec_007_handles_missing_timezone_baseline():
 
     assert result["observed_timezone_offset"] == -300
     assert result["typical_timezone_offsets"] == []
+
+
+def test_bec_007_ignores_invalid_hour_baseline_values():
+    """BEC-007 should ignore an invalid hour-only baseline."""
+
+    rule = BehavioralCommunicationAnomalyRule()
+
+    context = build_context(
+        date="Wed, 23 Sep 2026 10:30:00 +0100",
+        typical_hours=[25],
+    )
+
+    result = rule.evaluate(context)
+
+    assert result["rule_id"] == "BEC-007"
+    assert result["matched"] is False
+    assert result["indicators"] == []
+    assert result["observed_hour"] == 10
+
+
+def test_bec_007_ignores_invalid_day_baseline_values():
+    """BEC-007 should ignore an invalid weekday-only baseline."""
+
+    rule = BehavioralCommunicationAnomalyRule()
+
+    context = build_context(
+        date="Wed, 23 Sep 2026 10:30:00 +0100",
+        typical_hours=list(range(8, 18)),
+        typical_days=[7],
+    )
+
+    result = rule.evaluate(context)
+
+    assert result["rule_id"] == "BEC-007"
+    assert result["matched"] is False
+    assert result["indicators"] == []
+    assert result["observed_weekday"] == 2
+
+
+def test_bec_007_ignores_invalid_timezone_baseline_values():
+    """BEC-007 should ignore an invalid timezone-only baseline."""
+
+    rule = BehavioralCommunicationAnomalyRule()
+
+    context = build_context(
+        date="Wed, 23 Sep 2026 10:30:00 +0100",
+        typical_hours=list(range(8, 18)),
+        typical_timezone_offsets=[9999],
+    )
+
+    result = rule.evaluate(context)
+
+    assert result["rule_id"] == "BEC-007"
+    assert result["matched"] is False
+    assert result["indicators"] == []
+    assert result["observed_timezone_offset"] == 60

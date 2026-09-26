@@ -25,19 +25,25 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
 
         email_date = context.email_data.get("date", "")
 
-        typical_hours = context.known_behavior.get(
-            "typical_hours",
-            [],
+        typical_hours = self._normalize_hours(
+            context.known_behavior.get(
+                "typical_hours",
+                [],
+            )
         )
 
-        typical_days = context.known_behavior.get(
-            "typical_days",
-            [],
+        typical_days = self._normalize_days(
+            context.known_behavior.get(
+                "typical_days",
+                [],
+            )
         )
 
-        typical_timezone_offsets = context.known_behavior.get(
-            "typical_timezone_offsets",
-            [],
+        typical_timezone_offsets = self._normalize_timezone_offsets(
+            context.known_behavior.get(
+                "typical_timezone_offsets",
+                [],
+            )
         )
 
         indicators: list[str] = []
@@ -140,6 +146,54 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
             return None
 
         return int(utc_offset.total_seconds() // 60)
+
+    @staticmethod
+    def _normalize_hours(
+        values: Any,
+    ) -> list[int]:
+        """Return valid communication hours from a baseline."""
+
+        if not isinstance(values, list):
+            return []
+
+        return [
+            value
+            for value in values
+            if isinstance(value, int) and not isinstance(value, bool)
+            and 0 <= value <= 23
+        ]
+
+    @staticmethod
+    def _normalize_days(
+        values: Any,
+    ) -> list[int]:
+        """Return valid weekday values from a baseline."""
+
+        if not isinstance(values, list):
+            return []
+
+        return [
+            value
+            for value in values
+            if isinstance(value, int) and not isinstance(value, bool)
+            and 0 <= value <= 6
+        ]
+
+    @staticmethod
+    def _normalize_timezone_offsets(
+        values: Any,
+    ) -> list[int]:
+        """Return valid UTC-minute offsets from a baseline."""
+
+        if not isinstance(values, list):
+            return []
+
+        return [
+            value
+            for value in values
+            if isinstance(value, int) and not isinstance(value, bool)
+            and -840 <= value <= 840
+        ]
 
     def _build_result(
         self,
