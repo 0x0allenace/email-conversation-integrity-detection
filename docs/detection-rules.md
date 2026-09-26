@@ -142,20 +142,100 @@ Observed host: new-mail.example.net
 
 **Purpose:** Detect communication behavior that differs from an established sender or conversation baseline.
 
-**Current implementation:** The MVP currently includes deterministic time-of-day behavioral analysis.
+**Current implementation:** The MVP uses deterministic temporal behavioral analysis based on the supplied communication baseline.
+
+The current behavioral signals are:
+
+- Sending hour
+- Day of week
+
+The rule compares the observed message timestamp against the supplied baseline.
+
+### Sending Hour
 
 ```text
-Established behavior:   08:00–18:00
+Established behavior:   08:00–17:00
 Observed message:       02:47
+
+Result:
+- Message sent outside established communication hours
 ```
 
-The observed behavior can become an anomaly indicator when it falls outside the supplied baseline.
+The `typical_hours` baseline uses Python's integer hour representation:
 
-**Future indicators:**
+| Value | Time |
+|---|---|
+| 0 | 00:00 |
+| 8 | 08:00 |
+| 17 | 17:00 |
+| 23 | 23:00 |
+
+### Day of Week
+
+The optional `typical_days` baseline uses Python weekday numbering:
+
+| Value | Day |
+|---|---|
+| 0 | Monday |
+| 1 | Tuesday |
+| 2 | Wednesday |
+| 3 | Thursday |
+| 4 | Friday |
+| 5 | Saturday |
+| 6 | Sunday |
+
+**Example:**
+
+```text
+Established behavior:   Monday–Friday
+Observed message:       Sunday
+
+Result:
+- Message sent outside established communication days
+```
+
+### Multiple Behavioral Anomalies
+
+BEC-007 can report more than one behavioral inconsistency for the same message.
+
+```text
+Established behavior:
+  Hours: 08:00–17:00
+  Days:  Monday–Friday
+
+Observed:
+  Sunday 02:30
+
+Indicators:
+- Message sent outside established communication hours
+- Message sent outside established communication days
+```
+
+### Baseline Behavior
+
+Both behavioral baselines are optional.
+
+- If `typical_hours` is supplied, the observed sending hour is evaluated.
+- If `typical_days` is supplied, the observed weekday is evaluated.
+
+> An empty baseline does not independently produce a behavioral detection.
+
+This allows existing API clients that only provide `typical_hours` to remain compatible while enabling richer behavioral baselines.
+
+### Detection Evidence
+
+The rule exposes structured behavioral details including:
+
+- Observed hour
+- Typical hours
+- Observed weekday
+- Typical days
+- Behavioral indicators
+
+### Future Behavioral Indicators
 
 - Sender frequency
 - Recipient frequency
-- Sending hour
 - Response time
 - Participant count
 - Subject similarity
@@ -164,6 +244,8 @@ The observed behavior can become an anomaly indicator when it falls outside the 
 - Sender infrastructure frequency
 - Domain similarity
 - Reply-To frequency
+
+> Future behavioral signals should only be introduced when the system has a clearly defined observation source or baseline for that signal.
 
 ---
 

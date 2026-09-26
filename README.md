@@ -385,7 +385,16 @@ The current implementation combines conversation/thread indicators with sender i
 
 Identifies unusual communication behavior compared with an established sender or conversation baseline.
 
-The current MVP includes deterministic time-of-day behavioral analysis. Future versions will expand behavioral analysis using additional communication features and statistical or machine-learning techniques.
+The current MVP uses deterministic temporal behavioral analysis based on the supplied communication baseline.
+
+Current behavioral signals include:
+
+- Sending hour
+- Day of week
+
+The rule compares the observed message timestamp against the supplied baseline and reports explainable indicators when the message falls outside the established communication pattern.
+
+Future versions may expand behavioral analysis using additional communication features and statistical or machine-learning techniques.
 
 ---
 

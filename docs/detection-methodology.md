@@ -170,17 +170,107 @@ A previously unseen host or IP address can increase suspicion when combined with
 
 ## Behavioral Analysis
 
-The current MVP includes deterministic behavioral analysis.
+The current MVP uses deterministic temporal behavioral analysis based on the supplied communication baseline.
 
-The current implementation focuses on time-of-day communication behavior.
+### Current Behavioral Signals
 
-For example, if a known sender normally communicates during an established time window and a new message occurs outside the supplied baseline, the difference can become a behavioral indicator.
+The current implementation evaluates:
 
-**Future behavioral analysis may include:**
+- Sending hour
+- Day of week
+
+The rule compares the observed message timestamp against the established behavioral baseline.
+
+For example, if a known sender normally communicates during established hours and weekdays, a message sent outside those patterns can become a behavioral indicator.
+
+### Sending Hour
+
+The `typical_hours` baseline uses Python's integer hour representation.
+
+| Value | Time |
+|---|---|
+| 0 | 00:00 |
+| 8 | 08:00 |
+| 17 | 17:00 |
+| 23 | 23:00 |
+
+**Example:**
+
+```text
+Established behavior:
+  Hours: 08:00–17:00
+Observed:
+  02:47
+Indicator:
+  Message sent outside established communication hours
+```
+
+### Day of Week
+
+The optional `typical_days` baseline uses Python weekday numbering.
+
+| Value | Day |
+|---|---|
+| 0 | Monday |
+| 1 | Tuesday |
+| 2 | Wednesday |
+| 3 | Thursday |
+| 4 | Friday |
+| 5 | Saturday |
+| 6 | Sunday |
+
+**Example:**
+
+```text
+Established behavior:
+  Days: Monday–Friday
+Observed:
+  Sunday
+Indicator:
+  Message sent outside established communication days
+```
+
+### Multiple Behavioral Anomalies
+
+BEC-007 can report more than one behavioral inconsistency for the same message.
+
+```text
+Established behavior:
+  Hours: 08:00–17:00
+  Days:  Monday–Friday
+Observed:
+  Sunday 02:30
+Indicators:
+  - Message sent outside established communication hours
+  - Message sent outside established communication days
+```
+
+### Behavioral Baselines
+
+Both behavioral baselines are optional.
+
+- If `typical_hours` is supplied, the observed sending hour is evaluated.
+- If `typical_days` is supplied, the observed weekday is evaluated.
+- An empty behavioral baseline does not independently produce a behavioral detection.
+
+This allows existing clients to provide only the behavioral information they currently maintain while supporting richer baselines as the system evolves.
+
+### Detection Evidence
+
+BEC-007 exposes structured behavioral details that can support investigation, including:
+
+- Observed hour
+- Typical hours
+- Observed weekday
+- Typical days
+- Behavioral indicators
+
+### Future Behavioral Analysis
+
+Future behavioral analysis may include:
 
 - Sender frequency
 - Recipient frequency
-- Sending hour
 - Response time
 - Participant count
 - Subject similarity
@@ -189,6 +279,8 @@ For example, if a known sender normally communicates during an established time 
 - Infrastructure frequency
 - Domain similarity
 - Reply-To frequency
+
+> Future behavioral signals should only be introduced when the system has a clearly defined observation source or baseline for that signal.
 
 ---
 
@@ -263,8 +355,8 @@ Risk = 85
 **Good:**
 
 ```text
-Rule:           BEC-001 — Lookalike Domain
-Known domain:   supplier.com
+Rule:            BEC-001 — Lookalike Domain
+Known domain:    supplier.com
 Observed domain: supp1ier.com
 Indicators:
 - Domain mismatch
