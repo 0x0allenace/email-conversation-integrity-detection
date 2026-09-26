@@ -48,10 +48,15 @@ class DetectionEngine:
         known_hosts: list[str],
         known_ip_addresses: list[str],
         known_behavior: dict[str, Any] | None = None,
+        historical_observations: list[dict[str, Any]] | None = None,
+        email_data: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Analyze an email and return detection results."""
 
-        email_data = self.parser.parse_file(file_path)
+        if email_data is None:
+            email_data = self.parser.parse_file(
+                file_path
+            )
 
         identity = self.identity_analyzer.analyze(
             email_data
@@ -87,6 +92,7 @@ class DetectionEngine:
             known_hosts=known_hosts,
             known_ip_addresses=known_ip_addresses,
             known_behavior=known_behavior or {},
+            historical_observations=historical_observations or [],
         )
 
         detection_results: list[dict[str, Any]] = []

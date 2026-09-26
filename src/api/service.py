@@ -11,7 +11,9 @@ from sqlalchemy.orm import Session
 from src.database.models import Analysis, Detection
 from src.database.repository import AnalysisRepository
 from src.engine.detection_engine import DetectionEngine
+from src.identity.identity_analyzer import IdentityAnalyzer
 from src.integrations.siem.service import SIEMService
+from src.parser.email_parser import EmailParser
 
 
 class AnalysisService:
@@ -37,6 +39,9 @@ class AnalysisService:
             else AnalysisRepository()
         )
 
+        self.email_parser = EmailParser()
+        self.identity_analyzer = IdentityAnalyzer()
+
         self.siem_service = siem_service
 
     def analyze_email(
@@ -53,6 +58,29 @@ class AnalysisService:
     ) -> dict[str, Any]:
         """Analyze an email and optionally persist the analysis result."""
 
+        email_data = self.email_parser.parse_file(
+            email_file
+        )
+
+        identity_data = self.identity_analyzer.analyze(
+            email_data
+        )
+
+        historical_observations: list[dict[str, Any]] = []
+
+        if db is not None:
+            sender_email = identity_data.get(
+                "email_address"
+            )
+
+            if sender_email:
+                historical_observations = (
+                    self.repository.list_sender_history(
+                        db,
+                        sender_email=sender_email,
+                    )
+                )
+
         result = self.detection_engine.analyze(
             file_path=email_file,
             known_domain=known_domain,
@@ -61,6 +89,8 @@ class AnalysisService:
             known_hosts=known_hosts,
             known_ip_addresses=known_ip_addresses,
             known_behavior=known_behavior,
+            historical_observations=historical_observations,
+            email_data=email_data,
         )
 
         if db is None:

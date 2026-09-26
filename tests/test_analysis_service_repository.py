@@ -67,10 +67,12 @@ def _create_analysis(
     sender_email: str = "bob@supplier.com",
     subject: str = "Invoice update",
     risk_score: int = 0,
+    email_sent_at: datetime | None = None,
 ) -> Analysis:
     """Create and persist a test analysis."""
 
     analysis = Analysis(
+        email_sent_at=email_sent_at,
         analyzed_at=datetime.now(timezone.utc),
         email_message_id="<service-test@example.com>",
         sender_email=sender_email,
@@ -214,6 +216,125 @@ def test_analysis_service_persists_email_sent_at() -> None:
         assert persisted_analysis.email_sent_at.day == 23
         assert persisted_analysis.email_sent_at.hour == 10
         assert persisted_analysis.email_sent_at.minute == 30
+
+
+def test_analysis_service_uses_persisted_sender_history_for_bec_007(
+    tmp_path,
+) -> None:
+    """Test BEC-007 using historical sender observations from the database."""
+
+    email_file = tmp_path / "historical-behavior.eml"
+
+    email_file.write_text(
+        """From: bob@supplier.com
+To: alice@company.com
+Subject: Historical behavior test
+Date: Wed, 23 Sep 2026 03:30:00 +0100
+Message-ID: <historical-behavior@example.com>
+
+This message is outside the sender's historically observed
+communication hours.
+""",
+        encoding="utf-8",
+    )
+
+    known_participants = [
+        "bob@supplier.com",
+        "alice@company.com",
+    ]
+
+    known_hosts = [
+        "mail.supplier.com",
+        "relay.supplier.com",
+    ]
+
+    known_ip_addresses = [
+        "192.0.2.10",
+        "192.0.2.20",
+    ]
+
+    known_behavior: dict[str, object] = {}
+
+    historical_timestamps = [
+        datetime(
+            2026,
+            9,
+            20,
+            9,
+            30,
+            tzinfo=timezone.utc,
+        ),
+        datetime(
+            2026,
+            9,
+            21,
+            10,
+            30,
+            tzinfo=timezone.utc,
+        ),
+        datetime(
+            2026,
+            9,
+            22,
+            14,
+            0,
+            tzinfo=timezone.utc,
+        ),
+    ]
+
+    with TestSessionLocal() as db:
+        for timestamp in historical_timestamps:
+            _create_analysis(
+                db,
+                sender_email="bob@supplier.com",
+                email_sent_at=timestamp,
+            )
+
+        result = service.analyze_email(
+            email_file=str(email_file),
+            known_domain="supplier.com",
+            known_display_name="Bob Supplier",
+            known_participants=known_participants,
+            known_hosts=known_hosts,
+            known_ip_addresses=known_ip_addresses,
+            known_behavior=known_behavior,
+            db=db,
+        )
+
+        bec_007 = next(
+            detection
+            for detection in result["detections"]
+            if detection["rule_id"] == "BEC-007"
+        )
+
+        assert bec_007["matched"] is True
+        assert bec_007["historical_hours"] == [
+            9,
+            10,
+            14,
+        ]
+        assert bec_007["historical_hour_range"] == (
+            9,
+            14,
+        )
+        assert (
+            "Message sent outside historically observed "
+            "communication hours"
+            in bec_007["indicators"]
+        )
+
+        persisted_analysis = db.query(
+            Analysis
+        ).filter(
+            Analysis.email_message_id
+            == "<historical-behavior@example.com>"
+        ).one()
+
+        assert persisted_analysis.sender_email == (
+            "bob@supplier.com"
+        )
+        assert persisted_analysis.email_sent_at is not None
+        assert persisted_analysis.email_sent_at.hour == 3
 
 
 def test_get_analysis_returns_detections() -> None:

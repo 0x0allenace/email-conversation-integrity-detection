@@ -365,3 +365,76 @@ def test_bec_007_detects_unusual_sending_hour_through_engine():
         "Message sent outside established communication hours"
         in bec_007["indicators"]
     )
+
+
+def test_detection_engine_passes_historical_observations_to_bec_007(
+    tmp_path,
+):
+    """Test historical observations through the DetectionEngine."""
+
+    email_file = tmp_path / "historical-behavior.eml"
+
+    email_file.write_text(
+        """From: bob@supplier.com
+To: alice@company.com
+Subject: Historical behavior test
+Date: Wed, 23 Sep 2026 03:30:00 +0100
+Message-ID: <historical-behavior@example.com>
+
+This message is outside the sender's historically observed
+communication hours.
+""",
+        encoding="utf-8",
+    )
+
+    historical_observations = [
+        {
+            "id": 1,
+            "sender_email": "bob@supplier.com",
+            "email_sent_at": "2026-09-20T09:30:00+00:00",
+        },
+        {
+            "id": 2,
+            "sender_email": "bob@supplier.com",
+            "email_sent_at": "2026-09-21T10:30:00+00:00",
+        },
+        {
+            "id": 3,
+            "sender_email": "bob@supplier.com",
+            "email_sent_at": "2026-09-22T14:00:00+00:00",
+        },
+    ]
+
+    engine = DetectionEngine()
+
+    result = engine.analyze(
+        file_path=str(email_file),
+        known_domain="supplier.com",
+        known_display_name="Bob Supplier",
+        known_participants=KNOWN_PARTICIPANTS,
+        known_hosts=KNOWN_HOSTS,
+        known_ip_addresses=KNOWN_IP_ADDRESSES,
+        historical_observations=historical_observations,
+    )
+
+    bec_007 = next(
+        detection
+        for detection in result["detections"]
+        if detection["rule_id"] == "BEC-007"
+    )
+
+    assert bec_007["matched"] is True
+    assert bec_007["historical_hours"] == [
+        9,
+        10,
+        14,
+    ]
+    assert bec_007["historical_hour_range"] == (
+        9,
+        14,
+    )
+    assert (
+        "Message sent outside historically observed "
+        "communication hours"
+        in bec_007["indicators"]
+    )

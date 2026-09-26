@@ -64,11 +64,13 @@ def _create_analysis(
     sender_email: str = "bob@supplier.com",
     subject: str = "Invoice update",
     risk_score: int = 0,
+    email_sent_at: datetime | None = None,
 ) -> Analysis:
     """Create and persist a test analysis."""
 
     analysis = Analysis(
         analyzed_at=datetime.now(timezone.utc),
+        email_sent_at=email_sent_at,
         email_message_id="<test-message@example.com>",
         sender_email=sender_email,
         sender_domain="supplier.com",
@@ -241,3 +243,140 @@ def test_list_analyses_respects_limit() -> None:
         )
 
         assert len(results) == 2
+
+
+def test_list_sender_history_returns_matching_sender_history() -> None:
+    """Return historical observations for the requested sender."""
+
+    with TestSessionLocal() as db:
+        first = _create_analysis(
+            db,
+            sender_email="bob@supplier.com",
+            subject="First message",
+            email_sent_at=datetime(
+                2026,
+                9,
+                20,
+                9,
+                30,
+                tzinfo=timezone.utc,
+            ),
+        )
+
+        _create_analysis(
+            db,
+            sender_email="alice@supplier.com",
+            subject="Different sender",
+            email_sent_at=datetime(
+                2026,
+                9,
+                21,
+                10,
+                0,
+                tzinfo=timezone.utc,
+            ),
+        )
+
+        second = _create_analysis(
+            db,
+            sender_email="bob@supplier.com",
+            subject="Second message",
+            email_sent_at=datetime(
+                2026,
+                9,
+                22,
+                14,
+                0,
+                tzinfo=timezone.utc,
+            ),
+        )
+
+        results = repository.list_sender_history(
+            db,
+            sender_email="bob@supplier.com",
+        )
+
+        assert [result["id"] for result in results] == [
+            first.id,
+            second.id,
+        ]
+
+        assert [
+            result["email_sent_at"]
+            for result in results
+        ] == [
+            first.email_sent_at,
+            second.email_sent_at,
+        ]
+
+
+def test_list_sender_history_excludes_analyses_without_email_timestamp() -> None:
+    """Exclude observations without an original email timestamp."""
+
+    with TestSessionLocal() as db:
+        timestamped = _create_analysis(
+            db,
+            sender_email="bob@supplier.com",
+            email_sent_at=datetime(
+                2026,
+                9,
+                22,
+                14,
+                0,
+                tzinfo=timezone.utc,
+            ),
+        )
+
+        _create_analysis(
+            db,
+            sender_email="bob@supplier.com",
+            email_sent_at=None,
+        )
+
+        results = repository.list_sender_history(
+            db,
+            sender_email="bob@supplier.com",
+        )
+
+        assert len(results) == 1
+        assert results[0]["id"] == timestamped.id
+
+
+def test_list_sender_history_respects_limit() -> None:
+    """Limit historical observations returned for a sender."""
+
+    with TestSessionLocal() as db:
+        for index in range(3):
+            _create_analysis(
+                db,
+                sender_email="bob@supplier.com",
+                subject=f"Message {index}",
+                email_sent_at=datetime(
+                    2026,
+                    9,
+                    20 + index,
+                    10,
+                    0,
+                    tzinfo=timezone.utc,
+                ),
+            )
+
+        results = repository.list_sender_history(
+            db,
+            sender_email="bob@supplier.com",
+            limit=2,
+        )
+
+        assert len(results) == 2
+
+
+def test_list_sender_history_returns_empty_for_unknown_sender() -> None:
+    """Return no history when the sender has no observations."""
+
+    with TestSessionLocal() as db:
+        results = repository.list_sender_history(
+            db,
+            sender_email="unknown@example.com",
+        )
+
+        assert results == []

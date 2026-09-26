@@ -233,9 +233,7 @@ def test_analysis_service_dispatches_siem_events_without_database():
     assert call_kwargs["conversation"] is None
 
 
-def test_analysis_service_dispatches_siem_events_after_persistence(
-    monkeypatch,
-):
+def test_analysis_service_dispatches_siem_events_after_persistence():
     """Test that SIEM dispatch occurs after database persistence."""
 
     siem_service = Mock(spec=SIEMService)
@@ -245,6 +243,8 @@ def test_analysis_service_dispatches_siem_events_after_persistence(
     )
 
     db = Mock()
+
+    db.scalars.return_value.all.return_value = []
 
     call_order = []
 
@@ -277,6 +277,99 @@ def test_analysis_service_dispatches_siem_events_after_persistence(
     db.commit.assert_called_once()
     db.refresh.assert_called_once()
     siem_service.dispatch_detections.assert_called_once()
+
+
+def test_analysis_service_passes_sender_history_to_detection_engine():
+    """Test that sender history is passed to the detection engine."""
+
+    detection_engine = Mock(spec=DetectionEngine)
+
+    detection_engine.analyze.return_value = {
+        "email": {
+            "date": "Wed, 23 Sep 2026 10:30:00 +0000",
+            "message_id": "<invoice-update-001@supplier.com>",
+            "subject": "Test message",
+        },
+        "identity": {
+            "email_address": "bob@supplier.com",
+            "domain": "supplier.com",
+        },
+        "participants": KNOWN_PARTICIPANTS,
+        "authentication": {
+            "spf": "pass",
+            "dkim": "pass",
+            "dmarc": "pass",
+        },
+        "infrastructure": {},
+        "detections": [],
+    }
+
+    repository = Mock(spec=AnalysisService().repository)
+
+    historical_observations = [
+        {
+            "id": 1,
+            "sender_email": "bob@supplier.com",
+            "email_sent_at": "2026-09-20T09:30:00+00:00",
+        },
+        {
+            "id": 2,
+            "sender_email": "bob@supplier.com",
+            "email_sent_at": "2026-09-21T10:30:00+00:00",
+        },
+        {
+            "id": 3,
+            "sender_email": "bob@supplier.com",
+            "email_sent_at": "2026-09-22T14:00:00+00:00",
+        },
+    ]
+
+    repository.list_sender_history.return_value = (
+        historical_observations
+    )
+
+    service = AnalysisService(
+        detection_engine=detection_engine,
+        repository=repository,
+    )
+
+    db = Mock()
+
+    service.analyze_email(
+        email_file=str(LEGITIMATE_EMAIL),
+        known_domain="supplier.com",
+        known_display_name="Bob Supplier",
+        known_participants=KNOWN_PARTICIPANTS,
+        known_hosts=KNOWN_HOSTS,
+        known_ip_addresses=KNOWN_IP_ADDRESSES,
+        known_behavior=KNOWN_BEHAVIOR,
+        db=db,
+    )
+
+    repository.list_sender_history.assert_called_once_with(
+        db,
+        sender_email="bob@supplier.com",
+    )
+
+    detection_engine.analyze.assert_called_once()
+
+    call_kwargs = (
+        detection_engine.analyze.call_args.kwargs
+    )
+
+    assert (
+        call_kwargs["historical_observations"]
+        == historical_observations
+    )
+
+    assert (
+        call_kwargs["email_data"]["message_id"]
+        == "<invoice-update-001@supplier.com>"
+    )
+
+    db.add.assert_called_once()
+    db.commit.assert_called_once()
+    db.refresh.assert_called_once()
 
 
 def test_analysis_service_forwards_detection_context_to_siem():

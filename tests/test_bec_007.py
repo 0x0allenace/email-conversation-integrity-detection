@@ -8,6 +8,7 @@ def build_context(
     typical_hours: list[int],
     typical_days: list[int] | None = None,
     typical_timezone_offsets: list[int] | None = None,
+    historical_observations: list[dict] | None = None,
 ) -> DetectionContext:
     """Build a detection context for BEC-007 tests."""
 
@@ -60,6 +61,11 @@ def build_context(
                 else []
             ),
         },
+        historical_observations=(
+            historical_observations
+            if historical_observations is not None
+            else []
+        ),
     )
 
 
@@ -324,3 +330,127 @@ def test_bec_007_ignores_invalid_timezone_baseline_values():
     assert result["matched"] is False
     assert result["indicators"] == []
     assert result["observed_timezone_offset"] == 60
+
+
+def test_bec_007_detects_historical_sending_hour_anomaly():
+    """BEC-007 should detect a current hour outside historical behavior."""
+
+    rule = BehavioralCommunicationAnomalyRule()
+
+    context = build_context(
+        date="Wed, 23 Sep 2026 03:30:00 +0100",
+        typical_hours=[],
+        historical_observations=[
+            {
+                "email_sent_at": "2026-09-20T09:30:00+00:00",
+            },
+            {
+                "email_sent_at": "2026-09-21T10:30:00+00:00",
+            },
+            {
+                "email_sent_at": "2026-09-22T14:00:00+00:00",
+            },
+        ],
+    )
+
+    result = rule.evaluate(context)
+
+    assert result["rule_id"] == "BEC-007"
+    assert result["matched"] is True
+
+    assert (
+        "Message sent outside historically observed communication hours"
+        in result["indicators"]
+    )
+
+    assert result["historical_hours"] == [9, 10, 14]
+    assert result["historical_hour_range"] == (9, 14)
+    assert result["observed_hour"] == 3
+
+
+def test_bec_007_allows_hour_inside_historical_range():
+    """BEC-007 should allow a current hour inside historical behavior."""
+
+    rule = BehavioralCommunicationAnomalyRule()
+
+    context = build_context(
+        date="Wed, 23 Sep 2026 12:30:00 +0100",
+        typical_hours=[],
+        historical_observations=[
+            {
+                "email_sent_at": "2026-09-20T09:30:00+00:00",
+            },
+            {
+                "email_sent_at": "2026-09-21T10:30:00+00:00",
+            },
+            {
+                "email_sent_at": "2026-09-22T14:00:00+00:00",
+            },
+        ],
+    )
+
+    result = rule.evaluate(context)
+
+    assert result["matched"] is False
+    assert result["indicators"] == []
+    assert result["historical_hours"] == [9, 10, 14]
+    assert result["historical_hour_range"] == (9, 14)
+    assert result["observed_hour"] == 12
+
+
+def test_bec_007_requires_minimum_historical_observations():
+    """BEC-007 should not use an undersized historical baseline."""
+
+    rule = BehavioralCommunicationAnomalyRule()
+
+    context = build_context(
+        date="Wed, 23 Sep 2026 03:30:00 +0100",
+        typical_hours=[],
+        historical_observations=[
+            {
+                "email_sent_at": "2026-09-20T09:30:00+00:00",
+            },
+            {
+                "email_sent_at": "2026-09-21T10:30:00+00:00",
+            },
+        ],
+    )
+
+    result = rule.evaluate(context)
+
+    assert result["matched"] is False
+    assert result["indicators"] == []
+    assert result["historical_hours"] == [9, 10]
+    assert result["historical_hour_range"] is None
+
+
+def test_bec_007_ignores_invalid_historical_timestamps():
+    """BEC-007 should ignore invalid historical timestamps."""
+
+    rule = BehavioralCommunicationAnomalyRule()
+
+    context = build_context(
+        date="Wed, 23 Sep 2026 03:30:00 +0100",
+        typical_hours=[],
+        historical_observations=[
+            {
+                "email_sent_at": "2026-09-20T09:30:00+00:00",
+            },
+            {
+                "email_sent_at": "not-a-timestamp",
+            },
+            {},
+            {
+                "email_sent_at": "2026-09-21T10:30:00+00:00",
+            },
+            {
+                "email_sent_at": "2026-09-22T14:00:00+00:00",
+            },
+        ],
+    )
+
+    result = rule.evaluate(context)
+
+    assert result["matched"] is True
+    assert result["historical_hours"] == [9, 10, 14]
+    assert result["historical_hour_range"] == (9, 14)

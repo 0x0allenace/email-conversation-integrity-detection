@@ -57,6 +57,36 @@ class AnalysisRepository:
             for analysis in analyses
         ]
 
+    def list_sender_history(
+        self,
+        db: Session,
+        *,
+        sender_email: str,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        """Retrieve timestamped historical analyses for a sender."""
+
+        statement = (
+            select(Analysis)
+            .where(
+                Analysis.sender_email == sender_email,
+                Analysis.email_sent_at.is_not(None),
+            )
+            .order_by(
+                Analysis.email_sent_at.asc()
+            )
+            .limit(limit)
+        )
+
+        analyses = db.scalars(
+            statement
+        ).all()
+
+        return [
+            self._to_dict(analysis)
+            for analysis in analyses
+        ]
+
     @staticmethod
     def _to_dict(
         analysis: Analysis,

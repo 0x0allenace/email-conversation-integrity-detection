@@ -11,11 +11,12 @@ from src.engine.detection_rule import DetectionRule
 
 
 class BehavioralCommunicationAnomalyRule(DetectionRule):
-    """Detect unusual communication timing against a known baseline."""
+    """Detect unusual communication timing against known baselines."""
 
     rule_id = "BEC-007"
     rule_name = "Behavioral Communication Anomaly"
     severity = "MEDIUM"
+    MIN_HISTORICAL_OBSERVATIONS = 3
 
     def evaluate(
         self,
@@ -46,6 +47,14 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
             )
         )
 
+        historical_hours = self._extract_historical_hours(
+            context.historical_observations
+        )
+
+        historical_hour_range = self._build_historical_hour_range(
+            historical_hours
+        )
+
         indicators: list[str] = []
 
         parsed_date = self._parse_date(email_date)
@@ -60,6 +69,8 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
                 typical_days=typical_days,
                 observed_timezone_offset=None,
                 typical_timezone_offsets=typical_timezone_offsets,
+                historical_hours=historical_hours,
+                historical_hour_range=historical_hour_range,
             )
 
         observed_hour = parsed_date.hour
@@ -87,6 +98,17 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
                 "Message sent from an unexpected timezone offset"
             )
 
+        if (
+            historical_hour_range is not None
+            and (
+                observed_hour < historical_hour_range[0]
+                or observed_hour > historical_hour_range[1]
+            )
+        ):
+            indicators.append(
+                "Message sent outside historically observed communication hours"
+            )
+
         matched = bool(indicators)
 
         return self._build_result(
@@ -98,6 +120,8 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
             typical_days=typical_days,
             observed_timezone_offset=observed_timezone_offset,
             typical_timezone_offsets=typical_timezone_offsets,
+            historical_hours=historical_hours,
+            historical_hour_range=historical_hour_range,
         )
 
     @staticmethod
@@ -146,6 +170,74 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
             return None
 
         return int(utc_offset.total_seconds() // 60)
+
+    @classmethod
+    def _extract_historical_hours(
+        cls,
+        observations: list[dict[str, Any]],
+    ) -> list[int]:
+        """Extract valid local sending hours from historical observations."""
+
+        historical_hours: list[int] = []
+
+        for observation in observations:
+            email_sent_at = observation.get(
+                "email_sent_at"
+            )
+
+            if isinstance(email_sent_at, datetime):
+                historical_hours.append(
+                    email_sent_at.hour
+                )
+                continue
+
+            if isinstance(email_sent_at, str):
+                parsed_timestamp = cls._parse_historical_timestamp(
+                    email_sent_at
+                )
+
+                if parsed_timestamp is not None:
+                    historical_hours.append(
+                        parsed_timestamp.hour
+                    )
+
+        return historical_hours
+
+    @staticmethod
+    def _parse_historical_timestamp(
+        timestamp: str,
+    ) -> datetime | None:
+        """Parse a persisted historical email timestamp."""
+
+        if not timestamp:
+            return None
+
+        try:
+            parsed_timestamp = datetime.fromisoformat(
+                timestamp
+            )
+        except (TypeError, ValueError):
+            return None
+
+        if not isinstance(parsed_timestamp, datetime):
+            return None
+
+        return parsed_timestamp
+
+    @classmethod
+    def _build_historical_hour_range(
+        cls,
+        historical_hours: list[int],
+    ) -> tuple[int, int] | None:
+        """Build a historical observed-hour range when enough data exists."""
+
+        if len(historical_hours) < cls.MIN_HISTORICAL_OBSERVATIONS:
+            return None
+
+        return (
+            min(historical_hours),
+            max(historical_hours),
+        )
 
     @staticmethod
     def _normalize_hours(
@@ -206,6 +298,8 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
         typical_days: list[int],
         observed_timezone_offset: int | None,
         typical_timezone_offsets: list[int],
+        historical_hours: list[int],
+        historical_hour_range: tuple[int, int] | None,
     ) -> dict[str, Any]:
         """Build the standardized BEC-007 detection result."""
 
@@ -221,4 +315,6 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
             "typical_days": typical_days,
             "observed_timezone_offset": observed_timezone_offset,
             "typical_timezone_offsets": typical_timezone_offsets,
+            "historical_hours": historical_hours,
+            "historical_hour_range": historical_hour_range,
         }
