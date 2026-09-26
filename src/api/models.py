@@ -125,6 +125,7 @@ class AnalysisSummaryResponse(BaseModel):
 
     id: int
     analyzed_at: datetime
+    email_sent_at: datetime | None
     email_message_id: str | None
     sender_email: str
     sender_domain: str

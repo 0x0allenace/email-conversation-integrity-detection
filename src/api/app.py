@@ -148,6 +148,7 @@ def _build_analysis_response(
     return AnalysisResponse(
         id=result["id"],
         analyzed_at=result["analyzed_at"],
+        email_sent_at=result["email_sent_at"],
         email_message_id=result["email_message_id"],
         sender_email=result["sender_email"],
         sender_domain=result["sender_domain"],
@@ -168,6 +169,7 @@ def _build_analysis_summary_response(
     return AnalysisSummaryResponse(
         id=result["id"],
         analyzed_at=result["analyzed_at"],
+        email_sent_at=result["email_sent_at"],
         email_message_id=result["email_message_id"],
         sender_email=result["sender_email"],
         sender_domain=result["sender_domain"],

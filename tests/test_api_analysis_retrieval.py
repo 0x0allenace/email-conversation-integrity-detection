@@ -81,6 +81,7 @@ def _create_analysis(
     subject: str = "Invoice update",
     risk_score: int = 0,
     analyzed_at: datetime | None = None,
+    email_sent_at: datetime | None = None,
 ) -> int:
     """Create and persist a test analysis."""
 
@@ -91,6 +92,7 @@ def _create_analysis(
                 if analyzed_at is not None
                 else datetime.now(timezone.utc)
             ),
+            email_sent_at=email_sent_at,
             email_message_id="<api-test@example.com>",
             sender_email=sender_email,
             sender_domain="supplier.com",
@@ -175,6 +177,35 @@ def test_get_analysis_returns_persisted_analysis() -> None:
         "supplier.com"
     )
     assert "analyzed_at" in data
+
+
+def test_get_analysis_returns_email_sent_at() -> None:
+    """Return the original email timestamp with a persisted analysis."""
+
+    email_sent_at = datetime(
+        2026,
+        9,
+        23,
+        10,
+        30,
+        tzinfo=timezone.utc,
+    )
+
+    analysis_id = _create_analysis(
+        email_sent_at=email_sent_at,
+    )
+
+    response = client.get(
+        f"/analyses/{analysis_id}"
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["email_sent_at"] == (
+        "2026-09-23T10:30:00"
+    )
 
 
 def test_get_analysis_returns_detections() -> None:
@@ -281,6 +312,62 @@ def test_list_analyses_returns_recent_first() -> None:
     )
     assert data[1]["subject"] == (
         "Old analysis"
+    )
+
+
+def test_list_analyses_returns_email_sent_at() -> None:
+    """Return the original email timestamp in analysis summaries."""
+
+    oldest_email_sent_at = datetime(
+        2026,
+        9,
+        23,
+        9,
+        30,
+        tzinfo=timezone.utc,
+    )
+
+    newest_email_sent_at = datetime(
+        2026,
+        9,
+        23,
+        10,
+        30,
+        tzinfo=timezone.utc,
+    )
+
+    oldest_id = _create_analysis(
+        sender_email="old@example.com",
+        subject="Old analysis",
+        email_sent_at=oldest_email_sent_at,
+    )
+
+    newest_id = _create_analysis(
+        sender_email="new@example.com",
+        subject="New analysis",
+        email_sent_at=newest_email_sent_at,
+    )
+
+    response = client.get(
+        "/analyses"
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert len(data) == 2
+
+    results_by_id = {
+        item["id"]: item
+        for item in data
+    }
+
+    assert results_by_id[oldest_id]["email_sent_at"] == (
+        "2026-09-23T09:30:00"
+    )
+    assert results_by_id[newest_id]["email_sent_at"] == (
+        "2026-09-23T10:30:00"
     )
 
 

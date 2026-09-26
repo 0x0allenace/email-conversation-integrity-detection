@@ -1,6 +1,9 @@
 """Tests for API request and response models."""
 
+from datetime import datetime, timezone
+
 from src.api.models import (
+    AnalysisSummaryResponse,
     AuthenticationResponse,
     DetectionResponse,
     EmailAnalysisRequest,
@@ -145,3 +148,38 @@ def test_response_models_validate_expected_structure():
         "alice@company.com",
         "bob@supplier.com",
     ]
+
+
+def test_analysis_summary_response_accepts_email_sent_at():
+    """Test that persisted analysis responses expose the email timestamp."""
+
+    email_sent_at = datetime(
+        2026,
+        9,
+        23,
+        10,
+        30,
+        tzinfo=timezone.utc,
+    )
+
+    response = AnalysisSummaryResponse(
+        id=1,
+        analyzed_at=datetime(
+            2026,
+            9,
+            23,
+            11,
+            0,
+            tzinfo=timezone.utc,
+        ),
+        email_sent_at=email_sent_at,
+        email_message_id="<invoice-update-001@supplier.com>",
+        sender_email="bob@supplier.com",
+        sender_domain="supplier.com",
+        subject="Invoice Update",
+        known_domain="supplier.com",
+        known_display_name="Bob Supplier",
+        risk_score=0,
+    )
+
+    assert response.email_sent_at == email_sent_at
