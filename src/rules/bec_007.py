@@ -35,6 +35,11 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
             [],
         )
 
+        typical_timezone_offsets = context.known_behavior.get(
+            "typical_timezone_offsets",
+            [],
+        )
+
         indicators: list[str] = []
 
         parsed_date = self._parse_date(email_date)
@@ -47,10 +52,15 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
                 typical_hours=typical_hours,
                 observed_weekday=None,
                 typical_days=typical_days,
+                observed_timezone_offset=None,
+                typical_timezone_offsets=typical_timezone_offsets,
             )
 
         observed_hour = parsed_date.hour
         observed_weekday = parsed_date.weekday()
+        observed_timezone_offset = self._extract_timezone_offset(
+            parsed_date
+        )
 
         if typical_hours and observed_hour not in typical_hours:
             indicators.append(
@@ -62,6 +72,15 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
                 "Message sent outside established communication days"
             )
 
+        if (
+            typical_timezone_offsets
+            and observed_timezone_offset is not None
+            and observed_timezone_offset not in typical_timezone_offsets
+        ):
+            indicators.append(
+                "Message sent from an unexpected timezone offset"
+            )
+
         matched = bool(indicators)
 
         return self._build_result(
@@ -71,6 +90,8 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
             typical_hours=typical_hours,
             observed_weekday=observed_weekday,
             typical_days=typical_days,
+            observed_timezone_offset=observed_timezone_offset,
+            typical_timezone_offsets=typical_timezone_offsets,
         )
 
     @staticmethod
@@ -107,6 +128,19 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
 
         return parsed_date.hour
 
+    @staticmethod
+    def _extract_timezone_offset(
+        parsed_date: datetime,
+    ) -> int | None:
+        """Extract the UTC offset from a parsed email Date header."""
+
+        utc_offset = parsed_date.utcoffset()
+
+        if utc_offset is None:
+            return None
+
+        return int(utc_offset.total_seconds() // 60)
+
     def _build_result(
         self,
         *,
@@ -116,6 +150,8 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
         typical_hours: list[int],
         observed_weekday: int | None,
         typical_days: list[int],
+        observed_timezone_offset: int | None,
+        typical_timezone_offsets: list[int],
     ) -> dict[str, Any]:
         """Build the standardized BEC-007 detection result."""
 
@@ -129,4 +165,6 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
             "typical_hours": typical_hours,
             "observed_weekday": observed_weekday,
             "typical_days": typical_days,
+            "observed_timezone_offset": observed_timezone_offset,
+            "typical_timezone_offsets": typical_timezone_offsets,
         }

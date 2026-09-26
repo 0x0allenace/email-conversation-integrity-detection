@@ -104,7 +104,7 @@ Docker is recommended for running the API and PostgreSQL database together.
 ### Clone the Repository
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/0x0allenace/email-conversation-integrity-detection.git
 cd email-conversation-integrity-detection
 ```
 
@@ -385,16 +385,127 @@ The current implementation combines conversation/thread indicators with sender i
 
 Identifies unusual communication behavior compared with an established sender or conversation baseline.
 
-The current MVP uses deterministic temporal behavioral analysis based on the supplied communication baseline.
+The current MVP uses deterministic temporal behavioral analysis based on the supplied communication baseline. It does not require machine learning or historical database queries when an explicit behavioral baseline is supplied.
 
 Current behavioral signals include:
 
 - Sending hour
 - Day of week
+- Sender-declared timezone offset
 
-The rule compares the observed message timestamp against the supplied baseline and reports explainable indicators when the message falls outside the established communication pattern.
+#### Sending Hour
 
-Future versions may expand behavioral analysis using additional communication features and statistical or machine-learning techniques.
+The `typical_hours` baseline defines the hours during which communication is normally expected.
+
+The observed hour is extracted from the parsed email `Date` header.
+
+```text
+Established behavior:
+  Hours: 08:00–17:00
+
+Observed:
+  02:30
+
+Indicator:
+  - Message sent outside established communication hours
+```
+
+#### Day of Week
+
+The `typical_days` baseline defines the weekdays on which communication is normally expected.
+
+The observed weekday is derived from the parsed email `Date` header using Python's weekday representation:
+
+| Value | Day |
+|---|---|
+| 0 | Monday |
+| 1 | Tuesday |
+| 2 | Wednesday |
+| 3 | Thursday |
+| 4 | Friday |
+| 5 | Saturday |
+| 6 | Sunday |
+
+**For example:**
+
+```text
+Established behavior:
+  Days: Monday–Friday
+
+Observed:
+  Sunday
+
+Indicator:
+  - Message sent outside established communication days
+```
+
+#### Timezone Offset
+
+The optional `typical_timezone_offsets` baseline represents the UTC offsets declared in the email `Date` header. Values are expressed in minutes:
+
+| Date header offset | Baseline value |
+|---|---|
+| +0000 | 0 |
+| +0100 | 60 |
+| +0530 | 330 |
+| -0500 | -300 |
+
+**Example:**
+
+```text
+Established behavior:
+  Timezone offsets: +0100
+
+Observed:
+  Date header offset: -0500
+
+Indicator:
+  - Message sent from an unexpected timezone offset
+```
+
+> This signal evaluates the timezone offset declared by the message's `Date` header. It does not establish the sender's physical location or prove that the sender was actually operating from that timezone.
+
+#### Multiple Behavioral Anomalies
+
+BEC-007 can report multiple behavioral inconsistencies for the same message.
+
+```text
+Established behavior:
+  Hours:             08:00–17:00
+  Days:              Monday–Friday
+  Timezone offsets:  +0100
+
+Observed:
+  Sunday 02:30 -0500
+
+Indicators:
+  - Message sent outside established communication hours
+  - Message sent outside established communication days
+  - Message sent from an unexpected timezone offset
+```
+
+The indicators are independently evaluated and returned together when multiple baseline conditions are violated.
+
+#### Behavioral Baselines
+
+All behavioral baselines are optional.
+
+- If `typical_hours` is supplied, the observed sending hour is evaluated.
+- If `typical_days` is supplied, the observed weekday is evaluated.
+- If `typical_timezone_offsets` is supplied, the observed `Date` header timezone offset is evaluated.
+- An empty behavioral baseline does not independently produce a behavioral detection.
+
+The detection result preserves the behavioral evidence used by the rule, including:
+
+- Observed hour
+- Typical hours
+- Observed weekday
+- Typical days
+- Observed timezone offset
+- Typical timezone offsets
+- Behavioral indicators
+
+> Future behavioral signals should only be introduced when the system has a clearly defined observation source or baseline for that signal.
 
 ---
 

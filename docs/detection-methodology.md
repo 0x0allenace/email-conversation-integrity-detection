@@ -168,24 +168,30 @@ A previously unseen host or IP address can increase suspicion when combined with
 
 ---
 
-## Behavioral Analysis
+## BEC-007 — Behavioral Communication Anomaly
 
-The current MVP uses deterministic temporal behavioral analysis based on the supplied communication baseline.
+BEC-007 evaluates whether a message's communication timing differs from an established sender or conversation baseline.
 
-### Current Behavioral Signals
-
-The current implementation evaluates:
-
-- Sending hour
-- Day of week
-
-The rule compares the observed message timestamp against the established behavioral baseline.
-
-For example, if a known sender normally communicates during established hours and weekdays, a message sent outside those patterns can become a behavioral indicator.
+The current MVP uses deterministic temporal behavioral analysis. It does not require machine learning or historical database queries when an explicit behavioral baseline is supplied.
 
 ### Sending Hour
 
-The `typical_hours` baseline uses Python's integer hour representation.
+The `typical_hours` baseline defines the hours during which communication is normally expected.
+
+The observed hour is extracted from the parsed email `Date` header.
+
+```text
+Established behavior:
+  Hours: 08:00–17:00
+
+Observed:
+  02:30
+
+Indicator:
+  - Message sent outside established communication hours
+```
+
+The baseline uses Python's integer hour representation:
 
 | Value | Time |
 |---|---|
@@ -194,20 +200,9 @@ The `typical_hours` baseline uses Python's integer hour representation.
 | 17 | 17:00 |
 | 23 | 23:00 |
 
-**Example:**
-
-```text
-Established behavior:
-  Hours: 08:00–17:00
-Observed:
-  02:47
-Indicator:
-  Message sent outside established communication hours
-```
-
 ### Day of Week
 
-The optional `typical_days` baseline uses Python weekday numbering.
+The optional `typical_days` baseline defines the expected communication days. Python weekday numbering is used:
 
 | Value | Day |
 |---|---|
@@ -224,33 +219,68 @@ The optional `typical_days` baseline uses Python weekday numbering.
 ```text
 Established behavior:
   Days: Monday–Friday
+
 Observed:
   Sunday
+
 Indicator:
-  Message sent outside established communication days
-```
-
-### Multiple Behavioral Anomalies
-
-BEC-007 can report more than one behavioral inconsistency for the same message.
-
-```text
-Established behavior:
-  Hours: 08:00–17:00
-  Days:  Monday–Friday
-Observed:
-  Sunday 02:30
-Indicators:
-  - Message sent outside established communication hours
   - Message sent outside established communication days
 ```
 
+### Timezone Offset
+
+The optional `typical_timezone_offsets` baseline defines the UTC offsets normally declared in the email `Date` header. The observed offset is extracted from the parsed timestamp and represented in minutes.
+
+| Date header offset | Baseline value |
+|---|---|
+| +0000 | 0 |
+| +0100 | 60 |
+| +0530 | 330 |
+| -0500 | -300 |
+
+**Example:**
+
+```text
+Established behavior:
+  Timezone offsets: +0100
+
+Observed:
+  Date header offset: -0500
+
+Indicator:
+  - Message sent from an unexpected timezone offset
+```
+
+> This signal evaluates the timezone offset declared by the email's `Date` header. It does not determine the sender's physical location or prove that the sender was actually operating from that timezone.
+
+### Multiple Behavioral Anomalies
+
+BEC-007 can report multiple behavioral inconsistencies for the same message.
+
+```text
+Established behavior:
+  Hours:             08:00–17:00
+  Days:              Monday–Friday
+  Timezone offsets:  +0100
+
+Observed:
+  Sunday 02:30 -0500
+
+Indicators:
+  - Message sent outside established communication hours
+  - Message sent outside established communication days
+  - Message sent from an unexpected timezone offset
+```
+
+The indicators are independently evaluated and returned together when multiple baseline conditions are violated.
+
 ### Behavioral Baselines
 
-Both behavioral baselines are optional.
+All behavioral baselines are optional.
 
 - If `typical_hours` is supplied, the observed sending hour is evaluated.
 - If `typical_days` is supplied, the observed weekday is evaluated.
+- If `typical_timezone_offsets` is supplied, the observed `Date` header timezone offset is evaluated.
 - An empty behavioral baseline does not independently produce a behavioral detection.
 
 This allows existing clients to provide only the behavioral information they currently maintain while supporting richer baselines as the system evolves.
@@ -263,6 +293,8 @@ BEC-007 exposes structured behavioral details that can support investigation, in
 - Typical hours
 - Observed weekday
 - Typical days
+- Observed timezone offset
+- Typical timezone offsets
 - Behavioral indicators
 
 ### Future Behavioral Analysis

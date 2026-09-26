@@ -7,6 +7,7 @@ def build_context(
     date: str,
     typical_hours: list[int],
     typical_days: list[int] | None = None,
+    typical_timezone_offsets: list[int] | None = None,
 ) -> DetectionContext:
     """Build a detection context for BEC-007 tests."""
 
@@ -51,6 +52,11 @@ def build_context(
             "typical_days": (
                 typical_days
                 if typical_days is not None
+                else []
+            ),
+            "typical_timezone_offsets": (
+                typical_timezone_offsets
+                if typical_timezone_offsets is not None
                 else []
             ),
         },
@@ -196,3 +202,69 @@ def test_bec_007_detects_multiple_behavioral_anomalies():
 
     assert result["observed_hour"] == 2
     assert result["observed_weekday"] == 6
+
+
+def test_bec_007_detects_unexpected_timezone_offset():
+    """BEC-007 should detect an unexpected timezone offset."""
+
+    rule = BehavioralCommunicationAnomalyRule()
+
+    context = build_context(
+        date="Wed, 23 Sep 2026 10:30:00 -0500",
+        typical_hours=list(range(8, 18)),
+        typical_timezone_offsets=[60],
+    )
+
+    result = rule.evaluate(context)
+
+    assert result["rule_id"] == "BEC-007"
+    assert result["matched"] is True
+
+    assert (
+        "Message sent from an unexpected timezone offset"
+        in result["indicators"]
+    )
+
+    assert result["observed_timezone_offset"] == -300
+    assert result["typical_timezone_offsets"] == [60]
+
+
+def test_bec_007_allows_expected_timezone_offset():
+    """BEC-007 should allow an established timezone offset."""
+
+    rule = BehavioralCommunicationAnomalyRule()
+
+    context = build_context(
+        date="Wed, 23 Sep 2026 10:30:00 +0100",
+        typical_hours=list(range(8, 18)),
+        typical_timezone_offsets=[60],
+    )
+
+    result = rule.evaluate(context)
+
+    assert result["rule_id"] == "BEC-007"
+    assert result["matched"] is False
+    assert result["indicators"] == []
+
+    assert result["observed_timezone_offset"] == 60
+    assert result["typical_timezone_offsets"] == [60]
+
+
+def test_bec_007_handles_missing_timezone_baseline():
+    """BEC-007 should not flag an email without a timezone baseline."""
+
+    rule = BehavioralCommunicationAnomalyRule()
+
+    context = build_context(
+        date="Wed, 23 Sep 2026 10:30:00 -0500",
+        typical_hours=list(range(8, 18)),
+    )
+
+    result = rule.evaluate(context)
+
+    assert result["rule_id"] == "BEC-007"
+    assert result["matched"] is False
+    assert result["indicators"] == []
+
+    assert result["observed_timezone_offset"] == -300
+    assert result["typical_timezone_offsets"] == []

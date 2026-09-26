@@ -148,6 +148,7 @@ The current behavioral signals are:
 
 - Sending hour
 - Day of week
+- Sender-declared timezone offset
 
 The rule compares the observed message timestamp against the supplied baseline.
 
@@ -194,29 +195,58 @@ Result:
 - Message sent outside established communication days
 ```
 
+### Timezone Offset
+
+The optional `typical_timezone_offsets` baseline represents the UTC offsets declared in the email `Date` header. Values are expressed in minutes:
+
+| Date header offset | Baseline value |
+|---|---|
+| +0000 | 0 |
+| +0100 | 60 |
+| +0530 | 330 |
+| -0500 | -300 |
+
+**Example:**
+
+```text
+Established behavior:
+  Timezone offsets: +0100
+
+Observed message:
+  Date header offset: -0500
+
+Result:
+- Message sent from an unexpected timezone offset
+```
+
+> This signal evaluates the timezone offset declared by the message's `Date` header. It does not establish the sender's physical location or prove that the sender was actually operating from that timezone.
+
 ### Multiple Behavioral Anomalies
 
 BEC-007 can report more than one behavioral inconsistency for the same message.
 
 ```text
 Established behavior:
-  Hours: 08:00–17:00
-  Days:  Monday–Friday
+  Hours:             08:00–17:00
+  Days:              Monday–Friday
+  Timezone offsets:  +0100
 
 Observed:
-  Sunday 02:30
+  Sunday 02:30 -0500
 
 Indicators:
 - Message sent outside established communication hours
 - Message sent outside established communication days
+- Message sent from an unexpected timezone offset
 ```
 
 ### Baseline Behavior
 
-Both behavioral baselines are optional.
+All behavioral baselines are optional.
 
 - If `typical_hours` is supplied, the observed sending hour is evaluated.
 - If `typical_days` is supplied, the observed weekday is evaluated.
+- If `typical_timezone_offsets` is supplied, the observed `Date` header timezone offset is evaluated.
 
 > An empty baseline does not independently produce a behavioral detection.
 
@@ -230,6 +260,8 @@ The rule exposes structured behavioral details including:
 - Typical hours
 - Observed weekday
 - Typical days
+- Observed timezone offset
+- Typical timezone offsets
 - Behavioral indicators
 
 ### Future Behavioral Indicators
