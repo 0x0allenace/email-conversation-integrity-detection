@@ -174,6 +174,21 @@ BEC-007 evaluates whether a message's communication timing differs from an estab
 
 The current MVP uses deterministic temporal behavioral analysis. It does not require machine learning or historical database queries when an explicit behavioral baseline is supplied.
 
+### Email Timestamp
+
+The original email `Date` header is parsed during analysis and preserved as `email_sent_at` in the persisted analysis record.
+
+This timestamp is distinct from `analyzed_at`:
+
+| Field | Meaning |
+|---|---|
+| `email_sent_at` | Timestamp declared by the original email `Date` header |
+| `analyzed_at` | Timestamp when the system performed the analysis |
+
+Preserving `email_sent_at` provides a historical observation point for future behavioral analysis while keeping the current BEC-007 implementation deterministic.
+
+> The `Date` header is sender-provided email metadata. Its timestamp should therefore be treated as observed message metadata rather than independently verified evidence of the sender's physical location or actual clock time.
+
 ### Sending Hour
 
 The `typical_hours` baseline defines the hours during which communication is normally expected.
@@ -297,6 +312,8 @@ BEC-007 exposes structured behavioral details that can support investigation, in
 - Typical timezone offsets
 - Behavioral indicators
 
+The persisted analysis record also preserves `email_sent_at`, allowing the original message timestamp to remain available for historical analysis.
+
 ### Future Behavioral Analysis
 
 Future behavioral analysis may include:
@@ -311,6 +328,8 @@ Future behavioral analysis may include:
 - Infrastructure frequency
 - Domain similarity
 - Reply-To frequency
+
+These signals are not currently implemented by BEC-007.
 
 > Future behavioral signals should only be introduced when the system has a clearly defined observation source or baseline for that signal.
 
