@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from pathlib import Path
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -10,6 +11,8 @@ from sqlalchemy.orm import sessionmaker
 from src.api.service import AnalysisService
 from src.database.models import Analysis, Base, Detection
 
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 TEST_DATABASE_URL = "sqlite:///:memory:"
 
@@ -115,6 +118,102 @@ def test_get_analysis_returns_analysis() -> None:
             "Service retrieval test"
         )
         assert result["risk_score"] == 50
+
+
+def test_analysis_persists_email_sent_at() -> None:
+    """Persist and retrieve the original email sent timestamp."""
+
+    email_sent_at = datetime(
+        2026,
+        9,
+        23,
+        10,
+        30,
+        tzinfo=timezone.utc,
+    )
+
+    with TestSessionLocal() as db:
+        analysis = Analysis(
+            email_sent_at=email_sent_at,
+            email_message_id="<timestamp-test@example.com>",
+            sender_email="bob@supplier.com",
+            sender_domain="supplier.com",
+            subject="Timestamp persistence test",
+            known_domain="supplier.com",
+            known_display_name="Bob Supplier",
+            risk_score=0,
+            result={
+                "email": {
+                    "subject": "Timestamp persistence test",
+                },
+                "detections": [],
+            },
+        )
+
+        db.add(analysis)
+        db.commit()
+        db.refresh(analysis)
+
+        assert analysis.email_sent_at is not None
+        assert analysis.email_sent_at.replace(
+            tzinfo=timezone.utc
+        ) == email_sent_at
+
+
+def test_analysis_service_persists_email_sent_at() -> None:
+    """Persist the email Date header through AnalysisService."""
+
+    email_file = (
+        PROJECT_ROOT
+        / "samples"
+        / "legitimate"
+        / "normal-conversation.eml"
+    )
+
+    known_participants = [
+        "bob@supplier.com",
+        "alice@company.com",
+    ]
+
+    known_hosts = [
+        "mail.supplier.com",
+        "relay.supplier.com",
+    ]
+
+    known_ip_addresses = [
+        "192.0.2.10",
+        "192.0.2.20",
+    ]
+
+    known_behavior = {
+        "typical_hours": list(range(8, 18)),
+    }
+
+    with TestSessionLocal() as db:
+        service.analyze_email(
+            email_file=str(email_file),
+            known_domain="supplier.com",
+            known_display_name="Bob Supplier",
+            known_participants=known_participants,
+            known_hosts=known_hosts,
+            known_ip_addresses=known_ip_addresses,
+            known_behavior=known_behavior,
+            db=db,
+        )
+
+        persisted_analysis = db.query(
+            Analysis
+        ).filter(
+            Analysis.email_message_id
+            == "<invoice-update-001@supplier.com>"
+        ).one()
+
+        assert persisted_analysis.email_sent_at is not None
+        assert persisted_analysis.email_sent_at.year == 2026
+        assert persisted_analysis.email_sent_at.month == 9
+        assert persisted_analysis.email_sent_at.day == 23
+        assert persisted_analysis.email_sent_at.hour == 10
+        assert persisted_analysis.email_sent_at.minute == 30
 
 
 def test_get_analysis_returns_detections() -> None:

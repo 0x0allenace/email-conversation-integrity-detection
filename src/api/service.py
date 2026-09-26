@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+from email.utils import parsedate_to_datetime
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -70,7 +72,12 @@ class AnalysisService:
         identity_data = result["identity"]
         detections_data = result["detections"]
 
+        email_sent_at = self._parse_email_date(
+            email_data.get("date", "")
+        )
+
         analysis = Analysis(
+            email_sent_at=email_sent_at,
             email_message_id=email_data.get("message_id"),
             sender_email=identity_data["email_address"],
             sender_domain=identity_data["domain"],
@@ -113,6 +120,27 @@ class AnalysisService:
         self._dispatch_siem_events(result)
 
         return result
+
+    @staticmethod
+    def _parse_email_date(
+        email_date: str,
+    ) -> datetime | None:
+        """Parse an email Date header into a datetime value."""
+
+        if not email_date:
+            return None
+
+        try:
+            parsed_date = parsedate_to_datetime(
+                email_date
+            )
+        except (TypeError, ValueError, IndexError):
+            return None
+
+        if not isinstance(parsed_date, datetime):
+            return None
+
+        return parsed_date
 
     def _dispatch_siem_events(
         self,

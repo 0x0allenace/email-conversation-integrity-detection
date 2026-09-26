@@ -36,6 +36,11 @@ class Analysis(Base):
         nullable=False,
     )
 
+    email_sent_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
     email_message_id: Mapped[str | None] = mapped_column(
         String(500),
         nullable=True,

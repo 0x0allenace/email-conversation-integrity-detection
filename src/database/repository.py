@@ -66,6 +66,7 @@ class AnalysisRepository:
         return {
             "id": analysis.id,
             "analyzed_at": analysis.analyzed_at,
+            "email_sent_at": analysis.email_sent_at,
             "email_message_id": analysis.email_message_id,
             "sender_email": analysis.sender_email,
             "sender_domain": analysis.sender_domain,
