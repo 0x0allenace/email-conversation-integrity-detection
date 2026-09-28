@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from email.utils import parsedate_to_datetime
+from statistics import median
 from typing import Any
 
 from src.engine.detection_context import DetectionContext
@@ -17,12 +18,14 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
     rule_name = "Behavioral Communication Anomaly"
     severity = "MEDIUM"
     MIN_HISTORICAL_OBSERVATIONS = 3
+    MIN_FREQUENCY_INTERVAL_MINUTES = 1
+    FREQUENCY_ANOMALY_RATIO = 0.25
 
     def evaluate(
         self,
         context: DetectionContext,
     ) -> dict[str, Any]:
-        """Evaluate message timing and recipient behavior."""
+        """Evaluate message timing, recipient behavior, and frequency."""
 
         email_date = context.email_data.get("date", "")
 
@@ -67,6 +70,18 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
             context.historical_observations,
         )
 
+        historical_timestamps = (
+            self._extract_historical_timestamps(
+                context.historical_observations
+            )
+        )
+
+        historical_frequency_interval = (
+            self._build_historical_frequency_interval(
+                historical_timestamps
+            )
+        )
+
         indicators: list[str] = []
 
         parsed_date = self._parse_date(email_date)
@@ -91,6 +106,10 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
                 historical_hour_range=historical_hour_range,
                 historical_recipients=historical_recipients,
                 unusual_recipients=unusual_recipients,
+                historical_frequency_interval=(
+                    historical_frequency_interval
+                ),
+                current_frequency_interval=None,
             )
 
         observed_hour = parsed_date.hour
@@ -134,6 +153,21 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
                 "Message sent to a previously unseen recipient"
             )
 
+        current_frequency_interval = (
+            self._calculate_current_frequency_interval(
+                parsed_date,
+                historical_timestamps,
+            )
+        )
+
+        if self._is_frequency_anomaly(
+            current_frequency_interval,
+            historical_frequency_interval,
+        ):
+            indicators.append(
+                "Message sent at an unusually high communication frequency"
+            )
+
         matched = bool(indicators)
 
         return self._build_result(
@@ -149,6 +183,12 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
             historical_hour_range=historical_hour_range,
             historical_recipients=historical_recipients,
             unusual_recipients=unusual_recipients,
+            historical_frequency_interval=(
+                historical_frequency_interval
+            ),
+            current_frequency_interval=(
+                current_frequency_interval
+            ),
         )
 
     @staticmethod
@@ -352,6 +392,140 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
         return parsed_timestamp
 
     @classmethod
+    def _extract_historical_timestamps(
+        cls,
+        observations: list[dict[str, Any]],
+    ) -> list[datetime]:
+        """Extract valid historical email timestamps."""
+
+        historical_timestamps: list[datetime] = []
+
+        for observation in observations:
+            if not isinstance(observation, dict):
+                continue
+
+            email_sent_at = observation.get(
+                "email_sent_at"
+            )
+
+            if isinstance(email_sent_at, datetime):
+                historical_timestamps.append(
+                    email_sent_at
+                )
+                continue
+
+            if isinstance(email_sent_at, str):
+                parsed_timestamp = cls._parse_historical_timestamp(
+                    email_sent_at
+                )
+
+                if parsed_timestamp is not None:
+                    historical_timestamps.append(
+                        parsed_timestamp
+                    )
+
+        return sorted(
+            historical_timestamps
+        )
+
+    @classmethod
+    def _build_historical_frequency_interval(
+        cls,
+        timestamps: list[datetime],
+    ) -> float | None:
+        """Build the median historical interval between messages."""
+
+        if len(timestamps) < cls.MIN_HISTORICAL_OBSERVATIONS:
+            return None
+
+        intervals: list[float] = []
+
+        for previous, current in zip(
+            timestamps,
+            timestamps[1:],
+        ):
+            interval_minutes = (
+                current - previous
+            ).total_seconds() / 60
+
+            if (
+                interval_minutes
+                >= cls.MIN_FREQUENCY_INTERVAL_MINUTES
+            ):
+                intervals.append(
+                    interval_minutes
+                )
+
+        if len(intervals) < 2:
+            return None
+
+        return float(
+            median(intervals)
+        )
+
+    @classmethod
+    def _calculate_current_frequency_interval(
+        cls,
+        parsed_date: datetime,
+        historical_timestamps: list[datetime],
+    ) -> float | None:
+        """Calculate the interval since the most recent historical message."""
+
+        if not historical_timestamps:
+            return None
+
+        previous_timestamp = historical_timestamps[-1]
+
+        if (
+            parsed_date.tzinfo is not None
+            and previous_timestamp.tzinfo is None
+        ):
+            previous_timestamp = previous_timestamp.replace(
+                tzinfo=parsed_date.tzinfo
+            )
+
+        elif (
+            parsed_date.tzinfo is None
+            and previous_timestamp.tzinfo is not None
+        ):
+            parsed_date = parsed_date.replace(
+                tzinfo=previous_timestamp.tzinfo
+            )
+
+        interval_minutes = (
+            parsed_date - previous_timestamp
+        ).total_seconds() / 60
+
+        if (
+            interval_minutes
+            < cls.MIN_FREQUENCY_INTERVAL_MINUTES
+        ):
+            return None
+
+        return interval_minutes
+
+    @classmethod
+    def _is_frequency_anomaly(
+        cls,
+        current_interval: float | None,
+        historical_interval: float | None,
+    ) -> bool:
+        """Determine whether current sending frequency is unusually high."""
+
+        if (
+            current_interval is None
+            or historical_interval is None
+            or historical_interval <= 0
+        ):
+            return False
+
+        return (
+            current_interval
+            < historical_interval
+            * cls.FREQUENCY_ANOMALY_RATIO
+        )
+
+    @classmethod
     def _build_historical_hour_range(
         cls,
         historical_hours: list[int],
@@ -429,6 +603,8 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
         historical_hour_range: tuple[int, int] | None,
         historical_recipients: set[str],
         unusual_recipients: list[str],
+        historical_frequency_interval: float | None,
+        current_frequency_interval: float | None,
     ) -> dict[str, Any]:
         """Build the standardized BEC-007 detection result."""
 
@@ -450,4 +626,10 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
                 historical_recipients
             ),
             "unusual_recipients": unusual_recipients,
+            "historical_frequency_interval": (
+                historical_frequency_interval
+            ),
+            "current_frequency_interval": (
+                current_frequency_interval
+            ),
         }

@@ -602,3 +602,67 @@ def test_bec_007_requires_minimum_historical_observations_for_recipients():
 
     assert result["matched"] is False
     assert result["unusual_recipients"] == []
+
+
+def test_bec_007_detects_unusually_high_sending_frequency():
+    """BEC-007 should detect a sudden increase in sending frequency."""
+
+    rule = BehavioralCommunicationAnomalyRule()
+
+    context = build_context(
+        date="Wed, 23 Sep 2026 10:00:00 +0000",
+        typical_hours=[10],
+        historical_observations=[
+            {
+                "email_sent_at": "2026-09-20T10:00:00+00:00",
+            },
+            {
+                "email_sent_at": "2026-09-21T10:00:00+00:00",
+            },
+            {
+                "email_sent_at": "2026-09-22T10:00:00+00:00",
+            },
+            {
+                "email_sent_at": "2026-09-23T08:00:00+00:00",
+            },
+        ],
+    )
+
+    result = rule.evaluate(context)
+
+    assert result["matched"] is True
+    assert (
+        "Message sent at an unusually high communication frequency"
+        in result["indicators"]
+    )
+    assert result["historical_frequency_interval"] == 1440.0
+    assert result["current_frequency_interval"] == 120.0
+
+
+def test_bec_007_allows_normal_sending_frequency():
+    """BEC-007 should allow a current interval near the historical baseline."""
+
+    rule = BehavioralCommunicationAnomalyRule()
+
+    context = build_context(
+        date="Wed, 23 Sep 2026 10:00:00 +0000",
+        typical_hours=[10],
+        historical_observations=[
+            {
+                "email_sent_at": "2026-09-20T10:00:00+00:00",
+            },
+            {
+                "email_sent_at": "2026-09-21T10:00:00+00:00",
+            },
+            {
+                "email_sent_at": "2026-09-22T10:00:00+00:00",
+            },
+        ],
+    )
+
+    result = rule.evaluate(context)
+
+    assert result["matched"] is False
+    assert result["indicators"] == []
+    assert result["historical_frequency_interval"] == 1440.0
+    assert result["current_frequency_interval"] == 1440.0
