@@ -68,6 +68,11 @@ class DetectionEngine:
             )
         )
 
+        current_recipients = (
+            email_data.get("to", [])
+            + email_data.get("cc", [])
+        )
+
         authentication_results = (
             self.authentication_analyzer.analyze(
                 email_data
@@ -84,6 +89,7 @@ class DetectionEngine:
             email_data=email_data,
             identity=identity,
             participants=current_participants,
+            recipients=current_recipients,
             authentication=authentication_results,
             infrastructure=infrastructure,
             known_domain=known_domain,
@@ -148,6 +154,7 @@ class DetectionEngine:
             "email": email_data,
             "identity": identity,
             "participants": current_participants,
+            "recipients": current_recipients,
             "authentication": authentication_results,
             "infrastructure": infrastructure,
             "detections": detection_results,

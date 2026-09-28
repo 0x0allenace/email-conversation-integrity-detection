@@ -438,3 +438,46 @@ communication hours.
         "communication hours"
         in bec_007["indicators"]
     )
+
+
+def test_detection_engine_extracts_recipients_from_to_and_cc():
+    """Test that recipients contain To and Cc but exclude From and Reply-To."""
+
+    engine = DetectionEngine()
+
+    email_data = {
+        "from": "Bob Supplier <bob@supplier.com>",
+        "to": [
+            "Alice Company <alice@company.com>",
+        ],
+        "cc": [
+            "Finance Team <finance@company.com>",
+        ],
+        "reply_to": "Attacker <attacker@example.com>",
+        "return_path": "Bob Supplier <bob@supplier.com>",
+        "subject": "Invoice Update",
+        "date": "Wed, 23 Sep 2026 10:30:00 +0000",
+        "message_id": "<test-recipient@example.com>",
+        "in_reply_to": "",
+        "references": "",
+        "authentication_results": "",
+        "received": [],
+    }
+
+    result = engine.analyze(
+        "unused.eml",
+        known_domain="supplier.com",
+        known_display_name="Bob Supplier",
+        known_participants=KNOWN_PARTICIPANTS,
+        known_hosts=KNOWN_HOSTS,
+        known_ip_addresses=KNOWN_IP_ADDRESSES,
+        email_data=email_data,
+    )
+
+    assert result["recipients"] == [
+        "Alice Company <alice@company.com>",
+        "Finance Team <finance@company.com>",
+    ]
+
+    assert "Bob Supplier <bob@supplier.com>" not in result["recipients"]
+    assert "Attacker <attacker@example.com>" not in result["recipients"]

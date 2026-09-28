@@ -6,6 +6,7 @@ def build_context(
     *,
     date: str,
     typical_hours: list[int],
+    recipients: list[str] | None = None,
     typical_days: list[int] | None = None,
     typical_timezone_offsets: list[int] | None = None,
     historical_observations: list[dict] | None = None,
@@ -26,6 +27,11 @@ def build_context(
             "bob@supplier.com",
             "alice@company.com",
         ],
+        recipients=(
+            recipients
+            if recipients is not None
+            else []
+        ),
         authentication={
             "spf": "pass",
             "dkim": "pass",
@@ -454,3 +460,145 @@ def test_bec_007_ignores_invalid_historical_timestamps():
     assert result["matched"] is True
     assert result["historical_hours"] == [9, 10, 14]
     assert result["historical_hour_range"] == (9, 14)
+
+
+def test_bec_007_detects_unusual_historical_recipient():
+    """BEC-007 should detect a previously unseen recipient."""
+
+    rule = BehavioralCommunicationAnomalyRule()
+
+    context = build_context(
+        date="Wed, 23 Sep 2026 10:30:00 +0100",
+        typical_hours=[10],
+        recipients=[
+            "alice@company.com",
+            "attacker@evil.com",
+        ],
+        historical_observations=[
+            {
+                "email_sent_at": "2026-09-20T09:30:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-21T10:30:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": ["finance@company.com"],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-22T14:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+        ],
+    )
+
+    result = rule.evaluate(context)
+
+    assert result["matched"] is True
+    assert "attacker@evil.com" in result["unusual_recipients"]
+    assert (
+        "Message sent to a previously unseen recipient"
+        in result["indicators"]
+    )
+
+
+def test_bec_007_allows_historically_observed_recipients():
+    """BEC-007 should allow recipients seen in sender history."""
+
+    rule = BehavioralCommunicationAnomalyRule()
+
+    context = build_context(
+        date="Wed, 23 Sep 2026 10:30:00 +0100",
+        typical_hours=[10],
+        recipients=[
+            "alice@company.com",
+            "finance@company.com",
+        ],
+        historical_observations=[
+            {
+                "email_sent_at": "2026-09-20T09:30:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-21T10:30:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": ["finance@company.com"],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-22T14:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+        ],
+    )
+
+    result = rule.evaluate(context)
+
+    assert result["matched"] is False
+    assert result["unusual_recipients"] == []
+
+
+def test_bec_007_requires_minimum_historical_observations_for_recipients():
+    """BEC-007 should require three observations for recipient detection."""
+
+    rule = BehavioralCommunicationAnomalyRule()
+
+    context = build_context(
+        date="Wed, 23 Sep 2026 10:30:00 +0100",
+        typical_hours=[10],
+        recipients=[
+            "alice@company.com",
+            "attacker@evil.com",
+        ],
+        historical_observations=[
+            {
+                "email_sent_at": "2026-09-20T09:30:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-21T10:30:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+        ],
+    )
+
+    result = rule.evaluate(context)
+
+    assert result["matched"] is False
+    assert result["unusual_recipients"] == []

@@ -22,7 +22,7 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
         self,
         context: DetectionContext,
     ) -> dict[str, Any]:
-        """Evaluate message timing against established behavior."""
+        """Evaluate message timing and recipient behavior."""
 
         email_date = context.email_data.get("date", "")
 
@@ -55,14 +55,32 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
             historical_hours
         )
 
+        historical_recipients = (
+            self._extract_historical_recipients(
+                context.historical_observations
+            )
+        )
+
+        unusual_recipients = self._find_unusual_recipients(
+            context.recipients,
+            historical_recipients,
+            context.historical_observations,
+        )
+
         indicators: list[str] = []
 
         parsed_date = self._parse_date(email_date)
 
         if parsed_date is None:
             return self._build_result(
-                matched=False,
-                indicators=indicators,
+                matched=bool(unusual_recipients),
+                indicators=(
+                    [
+                        "Message sent to a previously unseen recipient"
+                    ]
+                    if unusual_recipients
+                    else indicators
+                ),
                 observed_hour=None,
                 typical_hours=typical_hours,
                 observed_weekday=None,
@@ -71,6 +89,8 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
                 typical_timezone_offsets=typical_timezone_offsets,
                 historical_hours=historical_hours,
                 historical_hour_range=historical_hour_range,
+                historical_recipients=historical_recipients,
+                unusual_recipients=unusual_recipients,
             )
 
         observed_hour = parsed_date.hour
@@ -109,6 +129,11 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
                 "Message sent outside historically observed communication hours"
             )
 
+        if unusual_recipients:
+            indicators.append(
+                "Message sent to a previously unseen recipient"
+            )
+
         matched = bool(indicators)
 
         return self._build_result(
@@ -122,6 +147,8 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
             typical_timezone_offsets=typical_timezone_offsets,
             historical_hours=historical_hours,
             historical_hour_range=historical_hour_range,
+            historical_recipients=historical_recipients,
+            unusual_recipients=unusual_recipients,
         )
 
     @staticmethod
@@ -202,6 +229,106 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
                     )
 
         return historical_hours
+
+    @classmethod
+    def _extract_historical_recipients(
+        cls,
+        observations: list[dict[str, Any]],
+    ) -> set[str]:
+        """Extract recipients observed across qualifying sender history."""
+
+        if len(observations) < cls.MIN_HISTORICAL_OBSERVATIONS:
+            return set()
+
+        historical_recipients: set[str] = set()
+
+        valid_observations = 0
+
+        for observation in observations:
+            if not isinstance(observation, dict):
+                continue
+
+            result = observation.get("result")
+
+            if not isinstance(result, dict):
+                continue
+
+            email = result.get("email")
+
+            if not isinstance(email, dict):
+                continue
+
+            to_recipients = cls._normalize_recipients(
+                email.get("to", [])
+            )
+
+            cc_recipients = cls._normalize_recipients(
+                email.get("cc", [])
+            )
+
+            observation_recipients = (
+                to_recipients + cc_recipients
+            )
+
+            if not observation_recipients:
+                continue
+
+            valid_observations += 1
+            historical_recipients.update(
+                observation_recipients
+            )
+
+        if valid_observations < cls.MIN_HISTORICAL_OBSERVATIONS:
+            return set()
+
+        return historical_recipients
+
+    @classmethod
+    def _find_unusual_recipients(
+        cls,
+        current_recipients: list[str],
+        historical_recipients: set[str],
+        observations: list[dict[str, Any]],
+    ) -> list[str]:
+        """Find current recipients absent from sufficient sender history."""
+
+        if len(observations) < cls.MIN_HISTORICAL_OBSERVATIONS:
+            return []
+
+        if not historical_recipients:
+            return []
+
+        normalized_current_recipients = cls._normalize_recipients(
+            current_recipients
+        )
+
+        return [
+            recipient
+            for recipient in normalized_current_recipients
+            if recipient not in historical_recipients
+        ]
+
+    @staticmethod
+    def _normalize_recipients(
+        values: Any,
+    ) -> list[str]:
+        """Return normalized recipient email addresses from a value."""
+
+        if not isinstance(values, list):
+            return []
+
+        normalized: list[str] = []
+
+        for value in values:
+            if not isinstance(value, str):
+                continue
+
+            recipient = value.strip().lower()
+
+            if recipient and recipient not in normalized:
+                normalized.append(recipient)
+
+        return normalized
 
     @staticmethod
     def _parse_historical_timestamp(
@@ -300,6 +427,8 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
         typical_timezone_offsets: list[int],
         historical_hours: list[int],
         historical_hour_range: tuple[int, int] | None,
+        historical_recipients: set[str],
+        unusual_recipients: list[str],
     ) -> dict[str, Any]:
         """Build the standardized BEC-007 detection result."""
 
@@ -317,4 +446,8 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
             "typical_timezone_offsets": typical_timezone_offsets,
             "historical_hours": historical_hours,
             "historical_hour_range": historical_hour_range,
+            "historical_recipients": sorted(
+                historical_recipients
+            ),
+            "unusual_recipients": unusual_recipients,
         }

@@ -35,6 +35,9 @@ def test_detection_context_stores_analysis_data():
             "alice@company.com",
             "bob@supplier.com",
         ],
+        recipients=[
+            "alice@company.com",
+        ],
         known_hosts=[
             "mail.supplier.com",
         ],
@@ -45,6 +48,9 @@ def test_detection_context_stores_analysis_data():
 
     assert context.identity["domain"] == "supplier.com"
     assert "bob@supplier.com" in context.participants
+    assert context.recipients == [
+        "alice@company.com",
+    ]
     assert context.authentication["spf"] == "pass"
     assert context.infrastructure["hosts"] == [
         "mail.supplier.com",

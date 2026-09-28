@@ -20,6 +20,9 @@ class DetectionContext:
     known_participants: list[str]
     known_hosts: list[str]
     known_ip_addresses: list[str]
+    recipients: list[str] = field(
+        default_factory=list
+    )
     known_behavior: dict[str, Any] = field(
         default_factory=dict
     )

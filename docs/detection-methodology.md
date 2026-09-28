@@ -424,8 +424,39 @@ The currently implemented BEC-007 behavioral signals are:
 | Typical sending day | Supplied behavioral baseline | Implemented |
 | Typical timezone offset | Supplied behavioral baseline | Implemented |
 | Historical sending-hour range | Persisted sender observations | Implemented |
+| Historical recipient behavior | Persisted sender observations | Implemented |
 
 These signals are intentionally deterministic and explainable.
+
+### Historical Recipient Behavior
+
+BEC-007 also evaluates whether the current message is addressed to recipients that have not previously appeared in the sender's established communication history.
+
+The current recipient set is derived from the message's `To` and `Cc` fields. Historical recipients are recovered from persisted sender analyses, using the recipient data stored in each historical analysis result.
+
+Recipient values are normalized before comparison by:
+
+1. Removing surrounding whitespace.
+2. Converting addresses to lowercase.
+3. Removing duplicate addresses.
+4. Ignoring non-string recipient values.
+
+A minimum of three qualifying historical observations is required before recipient history is used as a behavioral baseline. Historical observations without usable `To` or `Cc` recipient data do not count toward this threshold.
+
+When a current recipient is absent from the established historical recipient set, BEC-007 records:
+
+```text
+Message sent to a previously unseen recipient
+```
+
+The detection result also exposes:
+
+- `historical_recipients` — recipients observed across the qualifying historical sender observations.
+- `unusual_recipients` — current recipients that were not observed in the historical baseline.
+
+This signal is a behavioral anomaly indicator rather than proof of malicious activity. A previously unseen recipient can be legitimate, for example when a sender begins communicating with a new customer, colleague, supplier, or business partner. The signal is therefore intended to be evaluated alongside the other BEC-007 behavioral indicators and the project’s other deterministic detection rules.
+
+The historical recipient baseline is derived from persisted analysis results rather than requiring a separate recipient-history database table or schema migration.
 
 ### Future Behavioral Analysis
 
