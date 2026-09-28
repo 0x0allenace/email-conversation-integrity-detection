@@ -4,9 +4,11 @@
 
 Email Conversation Integrity Detection uses a layered and explainable detection methodology.
 
-The system compares an analyzed email against a supplied baseline representing known sender identity, participants, infrastructure, and communication behavior.
+The system compares an analyzed email against a supplied baseline representing known sender identity, participants, infrastructure, and communication behavior. Where historical sender observations are available, the system can also compare the current message against previously observed communication behavior.
 
 The objective is to identify inconsistencies that may indicate Business Email Compromise (BEC), impersonation, conversation hijacking, or abnormal communication behavior.
+
+The methodology prioritizes deterministic, explainable detection rules before statistical or machine-learning-based anomaly detection.
 
 ---
 
@@ -32,6 +34,10 @@ Authentication   Infrastructure
       └───────┬───────┘
               ▼
        Behavior Analysis
+              │
+              ├── Supplied Behavioral Baseline
+              │
+              └── Historical Sender Observations
               │
               ▼
        Detection Rules
@@ -64,7 +70,9 @@ Examples include:
 
 The baseline should represent legitimate communication patterns as accurately as possible.
 
-> Poor or incomplete baseline information can produce false positives.
+Where persisted historical observations are available, they provide an additional evidence source for behavioral analysis.
+
+> Poor or incomplete baseline information can produce false positives or reduce the amount of behavioral evidence available to the detection engine.
 
 ---
 
@@ -172,7 +180,14 @@ A previously unseen host or IP address can increase suspicion when combined with
 
 BEC-007 evaluates whether a message's communication timing differs from an established sender or conversation baseline.
 
-The current MVP uses deterministic temporal behavioral analysis. It does not require machine learning or historical database queries when an explicit behavioral baseline is supplied.
+The current implementation uses deterministic temporal behavioral analysis based on:
+
+- Explicitly supplied behavioral baselines
+- Historical sender observations when available
+
+The rule does not require machine learning.
+
+Historical observations are retrieved by the application service from persisted analysis records and passed into the detection engine as structured data. BEC-007 itself remains independent of the database.
 
 ### Email Timestamp
 
@@ -185,7 +200,7 @@ This timestamp is distinct from `analyzed_at`:
 | `email_sent_at` | Timestamp declared by the original email `Date` header |
 | `analyzed_at` | Timestamp when the system performed the analysis |
 
-Preserving `email_sent_at` provides a historical observation point for future behavioral analysis while keeping the current BEC-007 implementation deterministic.
+Preserving `email_sent_at` provides an observation point for historical behavioral analysis.
 
 > The `Date` header is sender-provided email metadata. Its timestamp should therefore be treated as observed message metadata rather than independently verified evidence of the sender's physical location or actual clock time.
 
@@ -234,17 +249,17 @@ The optional `typical_days` baseline defines the expected communication days. Py
 ```text
 Established behavior:
   Days: Monday–Friday
-
 Observed:
   Sunday
-
 Indicator:
   - Message sent outside established communication days
 ```
 
 ### Timezone Offset
 
-The optional `typical_timezone_offsets` baseline defines the UTC offsets normally declared in the email `Date` header. The observed offset is extracted from the parsed timestamp and represented in minutes.
+The optional `typical_timezone_offsets` baseline defines the UTC offsets normally declared in the email `Date` header.
+
+The observed offset is extracted from the parsed timestamp and represented in minutes.
 
 | Date header offset | Baseline value |
 |---|---|
@@ -258,15 +273,87 @@ The optional `typical_timezone_offsets` baseline defines the UTC offsets normall
 ```text
 Established behavior:
   Timezone offsets: +0100
-
 Observed:
   Date header offset: -0500
-
 Indicator:
   - Message sent from an unexpected timezone offset
 ```
 
 > This signal evaluates the timezone offset declared by the email's `Date` header. It does not determine the sender's physical location or prove that the sender was actually operating from that timezone.
+
+### Historical Sender Observations
+
+When an analyzed sender has previously persisted email observations with a valid `email_sent_at` timestamp, the application service retrieves those observations and supplies them to BEC-007.
+
+BEC-007 extracts the local sending hour from each valid historical timestamp.
+
+A minimum of three valid historical observations is required before a historical sending-hour range is established.
+
+```text
+Historical observations:
+  09:30
+  10:30
+  14:00
+Historical observed range:
+  09:00–14:00
+```
+
+If the current message falls outside the established historical range, BEC-007 can produce:
+
+```text
+Indicator:
+  - Message sent outside historically observed communication hours
+```
+
+**For example:**
+
+```text
+Historical sending hours:
+  09:00
+  10:00
+  14:00
+Historical range:
+  09:00–14:00
+Current message:
+  03:30
+Indicator:
+  - Message sent outside historically observed communication hours
+```
+
+The historical range is calculated from the minimum and maximum valid observed sending hours.
+
+Historical observations with missing or invalid timestamps are ignored.
+
+> The historical range represents observed message timestamps available to the system. It is not a guarantee that the sender always communicates within that range.
+
+### Historical Observation Source
+
+Historical sender observations are retrieved by the application layer rather than directly by the BEC-007 rule.
+
+The flow is:
+
+```text
+Persisted Analysis Records
+          │
+          ▼
+Analysis Repository
+          │
+          ▼
+Analysis Service
+          │
+          ▼
+Detection Engine
+          │
+          ▼
+DetectionContext
+          │
+          ▼
+BEC-007
+```
+
+This separation keeps the detection rule focused on evaluating evidence while keeping database access inside the application and repository layers.
+
+The historical observation data passed to BEC-007 includes the persisted `email_sent_at` value.
 
 ### Multiple Behavioral Anomalies
 
@@ -277,28 +364,39 @@ Established behavior:
   Hours:             08:00–17:00
   Days:              Monday–Friday
   Timezone offsets:  +0100
-
 Observed:
   Sunday 02:30 -0500
-
 Indicators:
   - Message sent outside established communication hours
   - Message sent outside established communication days
   - Message sent from an unexpected timezone offset
 ```
 
-The indicators are independently evaluated and returned together when multiple baseline conditions are violated.
+Historical observations can provide an additional indicator:
+
+```text
+Historical range:
+  09:00–14:00
+Observed:
+  02:30
+Indicator:
+  - Message sent outside historically observed communication hours
+```
+
+The indicators are independently evaluated and returned together when multiple behavioral conditions are violated.
 
 ### Behavioral Baselines
 
-All behavioral baselines are optional.
+All explicit behavioral baselines are optional.
 
 - If `typical_hours` is supplied, the observed sending hour is evaluated.
 - If `typical_days` is supplied, the observed weekday is evaluated.
 - If `typical_timezone_offsets` is supplied, the observed `Date` header timezone offset is evaluated.
-- An empty behavioral baseline does not independently produce a behavioral detection.
+- If sufficient historical sender observations are available, the historical sending-hour range is evaluated.
+- An empty explicit behavioral baseline does not independently produce a behavioral detection.
+- Historical analysis is only performed when sufficient valid historical observations are available.
 
-This allows existing clients to provide only the behavioral information they currently maintain while supporting richer baselines as the system evolves.
+This allows existing clients to provide only the behavioral information they currently maintain while supporting richer behavioral evidence as the system evolves.
 
 ### Detection Evidence
 
@@ -310,9 +408,24 @@ BEC-007 exposes structured behavioral details that can support investigation, in
 - Typical days
 - Observed timezone offset
 - Typical timezone offsets
+- Historical observed hours
+- Historical observed-hour range
 - Behavioral indicators
 
 The persisted analysis record also preserves `email_sent_at`, allowing the original message timestamp to remain available for historical analysis.
+
+### Current Behavioral Scope
+
+The currently implemented BEC-007 behavioral signals are:
+
+| Signal | Source | Status |
+|---|---|---|
+| Typical sending hour | Supplied behavioral baseline | Implemented |
+| Typical sending day | Supplied behavioral baseline | Implemented |
+| Typical timezone offset | Supplied behavioral baseline | Implemented |
+| Historical sending-hour range | Persisted sender observations | Implemented |
+
+These signals are intentionally deterministic and explainable.
 
 ### Future Behavioral Analysis
 
@@ -331,7 +444,7 @@ Future behavioral analysis may include:
 
 These signals are not currently implemented by BEC-007.
 
-> Future behavioral signals should only be introduced when the system has a clearly defined observation source or baseline for that signal.
+> Future behavioral signals should only be introduced when the system has a clearly defined observation source, sufficient data, and a clearly defined baseline or statistical methodology for that signal.
 
 ---
 
@@ -390,6 +503,7 @@ Analysts should inspect:
 - Infrastructure information
 - Sender identity
 - Conversation context
+- Behavioral evidence
 
 ---
 
@@ -414,7 +528,18 @@ Indicators:
 - High domain similarity
 ```
 
-This allows a SOC analyst to investigate the underlying evidence.
+A behavioral detection can similarly expose the evidence behind the anomaly:
+
+```text
+Rule:              BEC-007 — Behavioral Communication Anomaly
+Historical hours:  09:00, 10:00, 14:00
+Historical range:  09:00–14:00
+Observed hour:     03:00
+Indicator:
+- Message sent outside historically observed communication hours
+```
+
+This allows a SOC analyst to investigate the underlying evidence instead of relying only on a risk score.
 
 ---
 
@@ -431,8 +556,12 @@ Examples include:
 - Legitimate Reply-To addresses
 - New employees joining a conversation
 - Changes to normal communication schedules
+- Legitimate communication outside historical sending hours
+- Legitimate changes in sender timezone or working schedule
 
 For this reason, detections should be interpreted using the complete analysis context.
+
+Historical behavioral anomalies should be treated as investigation indicators rather than proof of compromise.
 
 ---
 
@@ -442,6 +571,7 @@ The system may fail to identify attacks when:
 
 - The attacker uses the legitimate mailbox
 - Baseline information is incomplete
+- Historical observations are insufficient
 - Relevant headers are unavailable
 - Authentication information is missing
 - Infrastructure information cannot be established
@@ -463,3 +593,5 @@ Potential models include:
 - Autoencoder-based anomaly detection
 
 The ML layer will remain separate from the deterministic detection engine so that rule-based and behavioral approaches can be evaluated independently.
+
+Future statistical analysis should build on clearly defined historical observation sources and should not replace the existing explainable detection evidence.
