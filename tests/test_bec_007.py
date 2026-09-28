@@ -561,6 +561,7 @@ def test_bec_007_allows_historically_observed_recipients():
     result = rule.evaluate(context)
 
     assert result["matched"] is False
+    assert result["indicators"] == []
     assert result["unusual_recipients"] == []
 
 
@@ -601,7 +602,254 @@ def test_bec_007_requires_minimum_historical_observations_for_recipients():
     result = rule.evaluate(context)
 
     assert result["matched"] is False
+    assert result["indicators"] == []
     assert result["unusual_recipients"] == []
+
+
+def test_bec_007_detects_historically_infrequent_recipient():
+    """BEC-007 should detect a recipient with unusually low historical frequency."""
+
+    rule = BehavioralCommunicationAnomalyRule()
+
+    context = build_context(
+        date="Wed, 23 Sep 2026 10:30:00 +0100",
+        typical_hours=[10],
+        recipients=[
+            "alice@company.com",
+            "finance@company.com",
+        ],
+        historical_observations=[
+            {
+                "email_sent_at": "2026-09-20T09:30:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-21T10:30:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-22T14:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": [
+                            "alice@company.com",
+                            "finance@company.com",
+                        ],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-23T09:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-23T09:30:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-23T10:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-23T10:15:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-23T10:20:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-23T10:25:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-23T10:28:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+        ],
+    )
+
+    result = rule.evaluate(context)
+
+    assert result["matched"] is True
+    assert result["infrequent_recipients"] == [
+        "finance@company.com"
+    ]
+    assert (
+        "Message sent to a historically infrequent recipient"
+        in result["indicators"]
+    )
+
+    assert (
+        result["historical_recipient_frequencies"][
+            "finance@company.com"
+        ]
+        == 0.1
+    )
+
+
+def test_bec_007_allows_normally_frequent_recipient():
+    """BEC-007 should allow a recipient with normal historical frequency."""
+
+    rule = BehavioralCommunicationAnomalyRule()
+
+    context = build_context(
+        date="Wed, 23 Sep 2026 10:30:00 +0100",
+        typical_hours=[10],
+        recipients=[
+            "alice@company.com",
+        ],
+        historical_observations=[
+            {
+                "email_sent_at": "2026-09-20T09:30:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-21T10:30:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-22T14:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-23T09:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-23T09:30:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+        ],
+    )
+
+    result = rule.evaluate(context)
+
+    assert result["matched"] is False
+    assert result["indicators"] == []
+    assert result["infrequent_recipients"] == []
+    assert (
+        result["historical_recipient_frequencies"][
+            "alice@company.com"
+        ]
+        == 1.0
+    )
+
+
+def test_bec_007_requires_minimum_historical_observations_for_recipient_frequency():
+    """BEC-007 should require three observations for recipient frequency detection."""
+
+    rule = BehavioralCommunicationAnomalyRule()
+
+    context = build_context(
+        date="Wed, 23 Sep 2026 10:30:00 +0100",
+        typical_hours=[10],
+        recipients=[
+            "alice@company.com",
+            "finance@company.com",
+        ],
+        historical_observations=[
+            {
+                "email_sent_at": "2026-09-20T09:30:00+00:00",
+                "result": {
+                    "email": {
+                        "to": [
+                            "alice@company.com",
+                            "finance@company.com",
+                        ],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-21T10:30:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+        ],
+    )
+
+    result = rule.evaluate(context)
+
+    assert result["matched"] is False
+    assert result["indicators"] == []
+    assert result["infrequent_recipients"] == []
+    assert result["historical_recipient_frequencies"] == {}
 
 
 def test_bec_007_detects_unusually_high_sending_frequency():

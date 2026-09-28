@@ -20,6 +20,7 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
     MIN_HISTORICAL_OBSERVATIONS = 3
     MIN_FREQUENCY_INTERVAL_MINUTES = 1
     FREQUENCY_ANOMALY_RATIO = 0.25
+    RECIPIENT_FREQUENCY_THRESHOLD = 0.10
 
     def evaluate(
         self,
@@ -70,6 +71,19 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
             context.historical_observations,
         )
 
+        historical_recipient_frequencies = (
+            self._build_historical_recipient_frequencies(
+                context.historical_observations
+            )
+        )
+
+        infrequent_recipients = (
+            self._find_infrequent_recipients(
+                context.recipients,
+                historical_recipient_frequencies,
+            )
+        )
+
         historical_timestamps = (
             self._extract_historical_timestamps(
                 context.historical_observations
@@ -87,15 +101,19 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
         parsed_date = self._parse_date(email_date)
 
         if parsed_date is None:
+            if unusual_recipients:
+                indicators.append(
+                    "Message sent to a previously unseen recipient"
+                )
+
+            if infrequent_recipients:
+                indicators.append(
+                    "Message sent to a historically infrequent recipient"
+                )
+
             return self._build_result(
-                matched=bool(unusual_recipients),
-                indicators=(
-                    [
-                        "Message sent to a previously unseen recipient"
-                    ]
-                    if unusual_recipients
-                    else indicators
-                ),
+                matched=bool(indicators),
+                indicators=indicators,
                 observed_hour=None,
                 typical_hours=typical_hours,
                 observed_weekday=None,
@@ -106,6 +124,10 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
                 historical_hour_range=historical_hour_range,
                 historical_recipients=historical_recipients,
                 unusual_recipients=unusual_recipients,
+                historical_recipient_frequencies=(
+                    historical_recipient_frequencies
+                ),
+                infrequent_recipients=infrequent_recipients,
                 historical_frequency_interval=(
                     historical_frequency_interval
                 ),
@@ -153,6 +175,11 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
                 "Message sent to a previously unseen recipient"
             )
 
+        if infrequent_recipients:
+            indicators.append(
+                "Message sent to a historically infrequent recipient"
+            )
+
         current_frequency_interval = (
             self._calculate_current_frequency_interval(
                 parsed_date,
@@ -183,6 +210,10 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
             historical_hour_range=historical_hour_range,
             historical_recipients=historical_recipients,
             unusual_recipients=unusual_recipients,
+            historical_recipient_frequencies=(
+                historical_recipient_frequencies
+            ),
+            infrequent_recipients=infrequent_recipients,
             historical_frequency_interval=(
                 historical_frequency_interval
             ),
@@ -324,6 +355,60 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
         return historical_recipients
 
     @classmethod
+    def _build_historical_recipient_frequencies(
+        cls,
+        observations: list[dict[str, Any]],
+    ) -> dict[str, float]:
+        """Build historical recipient frequencies."""
+
+        if len(observations) < cls.MIN_HISTORICAL_OBSERVATIONS:
+            return {}
+
+        recipient_counts: dict[str, int] = {}
+        valid_observations = 0
+
+        for observation in observations:
+            if not isinstance(observation, dict):
+                continue
+
+            result = observation.get("result")
+
+            if not isinstance(result, dict):
+                continue
+
+            email = result.get("email")
+
+            if not isinstance(email, dict):
+                continue
+
+            recipients = (
+                cls._normalize_recipients(
+                    email.get("to", [])
+                )
+                + cls._normalize_recipients(
+                    email.get("cc", [])
+                )
+            )
+
+            if not recipients:
+                continue
+
+            valid_observations += 1
+
+            for recipient in set(recipients):
+                recipient_counts[recipient] = (
+                    recipient_counts.get(recipient, 0) + 1
+                )
+
+        if valid_observations < cls.MIN_HISTORICAL_OBSERVATIONS:
+            return {}
+
+        return {
+            recipient: count / valid_observations
+            for recipient, count in recipient_counts.items()
+        }
+
+    @classmethod
     def _find_unusual_recipients(
         cls,
         current_recipients: list[str],
@@ -346,6 +431,31 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
             recipient
             for recipient in normalized_current_recipients
             if recipient not in historical_recipients
+        ]
+
+    @classmethod
+    def _find_infrequent_recipients(
+        cls,
+        current_recipients: list[str],
+        historical_frequencies: dict[str, float],
+    ) -> list[str]:
+        """Find recipients with unusually low historical frequency."""
+
+        if not historical_frequencies:
+            return []
+
+        normalized_current_recipients = cls._normalize_recipients(
+            current_recipients
+        )
+
+        return [
+            recipient
+            for recipient in normalized_current_recipients
+            if (
+                recipient in historical_frequencies
+                and historical_frequencies[recipient]
+                <= cls.RECIPIENT_FREQUENCY_THRESHOLD
+            )
         ]
 
     @staticmethod
@@ -552,7 +662,8 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
         return [
             value
             for value in values
-            if isinstance(value, int) and not isinstance(value, bool)
+            if isinstance(value, int)
+            and not isinstance(value, bool)
             and 0 <= value <= 23
         ]
 
@@ -568,7 +679,8 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
         return [
             value
             for value in values
-            if isinstance(value, int) and not isinstance(value, bool)
+            if isinstance(value, int)
+            and not isinstance(value, bool)
             and 0 <= value <= 6
         ]
 
@@ -584,7 +696,8 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
         return [
             value
             for value in values
-            if isinstance(value, int) and not isinstance(value, bool)
+            if isinstance(value, int)
+            and not isinstance(value, bool)
             and -840 <= value <= 840
         ]
 
@@ -603,6 +716,8 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
         historical_hour_range: tuple[int, int] | None,
         historical_recipients: set[str],
         unusual_recipients: list[str],
+        historical_recipient_frequencies: dict[str, float],
+        infrequent_recipients: list[str],
         historical_frequency_interval: float | None,
         current_frequency_interval: float | None,
     ) -> dict[str, Any]:
@@ -626,6 +741,10 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
                 historical_recipients
             ),
             "unusual_recipients": unusual_recipients,
+            "historical_recipient_frequencies": (
+                historical_recipient_frequencies
+            ),
+            "infrequent_recipients": infrequent_recipients,
             "historical_frequency_interval": (
                 historical_frequency_interval
             ),
