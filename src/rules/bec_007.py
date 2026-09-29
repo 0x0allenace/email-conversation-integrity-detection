@@ -560,6 +560,8 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
         if len(observations) < cls.MIN_HISTORICAL_OBSERVATIONS:
             return {}
 
+        pair_counts: dict[tuple[str, str], int] = {}
+
         role_pair_counts: dict[
             tuple[str, str, str, str],
             int,
@@ -598,6 +600,10 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
                 recipients,
                 2,
             ):
+                pair_counts[pair] = (
+                    pair_counts.get(pair, 0) + 1
+                )
+
                 role_pair = cls._build_recipient_role_pair(
                     pair,
                     recipient_roles,
@@ -610,12 +616,32 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
         if valid_observations < cls.MIN_HISTORICAL_OBSERVATIONS:
             return {}
 
-        return {
-            role_pair: count / valid_observations
-            for role_pair, count in sorted(
-                role_pair_counts.items()
+        historical_role_frequencies: dict[
+            tuple[str, str, str, str],
+            float,
+        ] = {}
+
+        for role_pair, count in sorted(
+            role_pair_counts.items()
+        ):
+            recipient_pair = (
+                role_pair[0],
+                role_pair[2],
             )
-        }
+
+            pair_count = pair_counts.get(
+                recipient_pair,
+                0,
+            )
+
+            if pair_count <= 0:
+                continue
+
+            historical_role_frequencies[role_pair] = (
+                count / pair_count
+            )
+
+        return historical_role_frequencies
 
     @classmethod
     def _find_unusual_recipients(

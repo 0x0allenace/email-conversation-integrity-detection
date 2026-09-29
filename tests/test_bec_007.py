@@ -1555,3 +1555,172 @@ def test_bec_007_requires_minimum_historical_observations_for_recipient_roles():
     assert result["matched"] is False
     assert result["historical_recipient_role_frequencies"] == {}
     assert result["unusual_recipient_role_pairs"] == []
+
+
+def test_bec_007_calculates_recipient_role_frequency_within_established_pair():
+    """BEC-007 should calculate role frequency within the recipient relationship."""
+
+    rule = BehavioralCommunicationAnomalyRule()
+
+    context = build_context(
+        date="Fri, 18 Sep 2026 10:00:00 +0100",
+        typical_hours=[10],
+        recipients=[
+            "alice@company.com",
+            "finance@company.com",
+        ],
+        to_recipients=[
+            "alice@company.com",
+        ],
+        cc_recipients=[
+            "finance@company.com",
+        ],
+        historical_observations=[
+            {
+                "email_sent_at": "2026-09-01T09:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": [
+                            "alice@company.com",
+                        ],
+                        "cc": [
+                            "finance@company.com",
+                        ],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-02T09:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": [
+                            "alice@company.com",
+                        ],
+                        "cc": [
+                            "finance@company.com",
+                        ],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-03T09:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": [
+                            "alice@company.com",
+                        ],
+                        "cc": [
+                            "finance@company.com",
+                        ],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-04T09:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": [
+                            "alice@company.com",
+                        ],
+                        "cc": [
+                            "finance@company.com",
+                        ],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-05T09:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": [
+                            "finance@company.com",
+                        ],
+                        "cc": [
+                            "alice@company.com",
+                        ],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-06T09:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": [
+                            "other1@company.com",
+                        ],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-07T09:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": [
+                            "other2@company.com",
+                        ],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-08T09:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": [
+                            "other3@company.com",
+                        ],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-09T09:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": [
+                            "other4@company.com",
+                        ],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-10T09:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": [
+                            "other5@company.com",
+                        ],
+                        "cc": [],
+                    },
+                },
+            },
+        ],
+    )
+
+    result = rule.evaluate(context)
+
+    assert (
+        result["historical_recipient_role_frequencies"][
+            (
+                "alice@company.com",
+                "to",
+                "finance@company.com",
+                "cc",
+            )
+        ]
+        == 0.8
+    )
+
+    assert (
+        result["historical_recipient_role_frequencies"][
+            (
+                "alice@company.com",
+                "cc",
+                "finance@company.com",
+                "to",
+            )
+        ]
+        == 0.2
+    )
