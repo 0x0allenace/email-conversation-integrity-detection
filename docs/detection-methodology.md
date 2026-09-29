@@ -133,7 +133,7 @@ The system compares observed conversation participants with the supplied partici
 
 ```text
 Known participants: alice@company.com, bob@supplier.com
-Observed:            alice@company.com, bob@supplier.com, attacker@example.net
+Observed:           alice@company.com, bob@supplier.com, attacker@example.net
 ```
 
 The additional participant can become a detection indicator.
@@ -178,9 +178,9 @@ A previously unseen host or IP address can increase suspicion when combined with
 
 ## BEC-007 — Behavioral Communication Anomaly
 
-BEC-007 evaluates whether a message's communication timing differs from an established sender or conversation baseline.
+BEC-007 evaluates whether a message's communication behavior differs from an established sender or conversation baseline.
 
-The current implementation uses deterministic temporal behavioral analysis based on:
+The current implementation uses deterministic behavioral analysis based on:
 
 - Explicitly supplied behavioral baselines
 - Historical sender observations when available
@@ -285,15 +285,28 @@ Indicator:
 
 When an analyzed sender has previously persisted email observations with a valid `email_sent_at` timestamp, the application service retrieves those observations and supplies them to BEC-007.
 
-BEC-007 extracts the local sending hour from each valid historical timestamp.
+BEC-007 extracts the local sending hour from each valid historical timestamp. A minimum of three valid historical observations is required before historical behavioral analysis is established.
+
+Historical observations can provide evidence for multiple behavioral signals, including:
+
+- Historical sending-hour range
+- Sending frequency
+- Recipient frequency
+- Recipient co-occurrence
+- Recipient role relationships
+
+Historical observations with missing or invalid data for a specific signal are ignored for that signal.
+
+### Historical Sending-Hour Range
 
 A minimum of three valid historical observations is required before a historical sending-hour range is established.
 
 ```text
-Historical observations:
-  09:30
-  10:30
-  14:00
+Historical sending hours:
+  09
+  10
+  14
+
 Historical observed range:
   09:00–14:00
 ```
@@ -312,19 +325,250 @@ Historical sending hours:
   09:00
   10:00
   14:00
+
 Historical range:
   09:00–14:00
+
 Current message:
   03:30
+
 Indicator:
   - Message sent outside historically observed communication hours
 ```
 
 The historical range is calculated from the minimum and maximum valid observed sending hours.
 
-Historical observations with missing or invalid timestamps are ignored.
-
 > The historical range represents observed message timestamps available to the system. It is not a guarantee that the sender always communicates within that range.
+
+### Historical Sending Frequency
+
+BEC-007 can compare the current sending interval against the sender's historically observed communication cadence.
+
+Historical observations are ordered by their persisted `email_sent_at` timestamps. Valid consecutive observations are used to establish the sender's historical sending intervals.
+
+A minimum of three historical observations is required before frequency-based behavioral analysis is established.
+
+The current message is compared against the established historical communication cadence. The detection uses a deterministic frequency comparison rather than machine learning.
+
+The result can expose structured evidence describing the observed and historical communication frequency.
+
+This signal is intended to identify substantial deviations from an established sending cadence, such as a message being sent considerably sooner than historically observed communication intervals.
+
+> Sending frequency is an observed behavioral signal. A change in communication cadence can be legitimate and should be evaluated alongside the other detection evidence.
+
+### Historical Recipient Behavior
+
+BEC-007 evaluates whether the current message is addressed to recipients that have not previously appeared in the sender's established communication history.
+
+The current recipient set is derived from the message's `To` and `Cc` fields. Historical recipients are recovered from persisted sender analyses, using the recipient data stored in each historical analysis result.
+
+Recipient values are normalized before comparison by:
+
+1. Removing surrounding whitespace.
+2. Converting addresses to lowercase.
+3. Removing duplicate addresses.
+4. Ignoring non-string recipient values.
+
+A minimum of three qualifying historical observations is required before recipient history is used as a behavioral baseline. Historical observations without usable `To` or `Cc` recipient data do not count toward this threshold.
+
+When a current recipient is absent from the established historical recipient set, BEC-007 records:
+
+```text
+Message sent to a previously unseen recipient
+```
+
+The detection result also exposes:
+
+- `historical_recipients` — recipients observed across the qualifying historical sender observations.
+- `unusual_recipients` — current recipients that were not observed in the historical baseline.
+
+> This signal is a behavioral anomaly indicator rather than proof of malicious activity. A previously unseen recipient can be legitimate, for example when a sender begins communicating with a new customer, colleague, supplier, or business partner. The signal is therefore intended to be evaluated alongside the other BEC-007 behavioral indicators and the project's other deterministic detection rules.
+
+The historical recipient baseline is derived from persisted analysis results rather than requiring a separate recipient-history database table or schema migration.
+
+### Historical Recipient Frequency
+
+BEC-007 can also evaluate how frequently individual recipients have historically appeared in the sender's communication.
+
+Recipient frequency is calculated from qualifying historical observations containing usable `To` or `Cc` recipient data. The historical frequency represents the proportion of qualifying observations in which a recipient appeared.
+
+**For example:**
+
+```text
+Historical observations:
+  10 messages
+
+Recipient:
+  finance@company.com
+
+Historical frequency:
+  Appeared in 1 of 10 messages
+  Frequency: 10%
+```
+
+When the current message includes a historically known recipient whose historical frequency is unusually low, BEC-007 can record that relationship as behavioral evidence.
+
+Recipient frequency is evaluated separately from the unseen-recipient signal:
+
+```text
+Unseen recipient:
+  Recipient has never appeared historically.
+
+Low-frequency recipient:
+  Recipient is known historically but appears substantially less often.
+```
+
+This distinction allows the detection engine to preserve more granular behavioral evidence.
+
+> A low-frequency recipient is not inherently suspicious. New projects, escalations, one-off business interactions, and legitimate changes in communication patterns can produce low historical frequencies.
+
+### Historical Recipient Co-Occurrence
+
+BEC-007 evaluates whether recipients who appear together in the current message have historically appeared together in the sender's communication history.
+
+The current recipient set combines normalized `To` and `Cc` recipients.
+
+Historical recipient pairs are generated from each qualifying historical observation. Recipient pairs are treated as unordered relationships, meaning:
+
+```text
+alice@example.com + bob@example.com
+```
+
+represents the same relationship as:
+
+```text
+bob@example.com + alice@example.com
+```
+
+A minimum of three qualifying historical observations is required before recipient co-occurrence analysis is established.
+
+**For example:**
+
+```text
+Historical communication:
+
+Message 1:
+  To: alice@example.com
+  Cc: finance@example.com
+
+Message 2:
+  To: alice@example.com
+  Cc: finance@example.com
+
+Message 3:
+  To: alice@example.com
+  Cc: finance@example.com
+```
+
+The pair:
+
+```text
+alice@example.com + finance@example.com
+```
+
+has an established historical co-occurrence relationship.
+
+If a later message contains:
+
+```text
+To: alice@example.com
+Cc: legal@example.com
+```
+
+and the pair:
+
+```text
+alice@example.com + legal@example.com
+```
+
+has not previously appeared together, BEC-007 can record:
+
+```text
+Message contains a historically unusual recipient relationship
+```
+
+The analysis only treats recipients as historically established when they have appeared in the sender's qualifying historical observations.
+
+This allows recipient co-occurrence analysis to distinguish between:
+
+- A recipient that has never appeared before.
+- A known recipient appearing in an established relationship.
+- Known recipients appearing together in a historically unusual combination.
+
+> Recipient co-occurrence is an observed communication-pattern signal. Legitimate business events can create new recipient relationships.
+
+### Historical Recipient Role Anomaly
+
+BEC-007 also evaluates whether established recipient pairs normally occupy the same `To` and `Cc` roles.
+
+Recipient role analysis builds on the historical co-occurrence relationship. It is only applied when the recipient pair is already an established relationship.
+
+**For example**, historical messages may show:
+
+```text
+Historical:
+  To: alice@company.com
+  Cc: finance@company.com
+```
+
+If the current message contains:
+
+```text
+Current:
+  To: finance@company.com
+  Cc: alice@company.com
+```
+
+the same recipients are present and their relationship is known, but their historical communication roles have changed. BEC-007 can record:
+
+```text
+Message contains a historically unusual recipient role relationship
+```
+
+Recipient roles are derived from the current `To` and `Cc` fields.
+
+If a recipient appears in both `To` and `Cc`, the `To` role takes precedence so that each recipient has one deterministic role for analysis. Multiple recipients are supported in both fields.
+
+**For example:**
+
+```text
+To:
+  alice@company.com
+  bob@company.com
+
+Cc:
+  finance@company.com
+  legal@company.com
+  manager@company.com
+```
+
+BEC-007 evaluates recipient relationships pairwise while preserving each recipient's current `To` or `Cc` role.
+
+A minimum of three qualifying historical observations is required before recipient role analysis is established.
+
+> An unseen recipient pair is handled by recipient co-occurrence analysis rather than being treated as a recipient role anomaly.
+
+> A change in recipient role is an observed communication-pattern anomaly. Legitimate workflow changes can cause recipients to move between `To` and `Cc`.
+
+### Historical Behavioral Evidence
+
+BEC-007 can therefore evaluate several dimensions of historical communication behavior:
+
+```text
+Historical Sender Behavior
+        │
+        ├── Sending-hour range
+        ├── Sending frequency
+        │
+        └── Recipient behavior
+              │
+              ├── Recipient presence
+              ├── Recipient frequency
+              ├── Recipient co-occurrence
+              └── Recipient role relationship
+```
+
+These signals are evaluated independently so that multiple behavioral inconsistencies can be reported for the same message.
 
 ### Historical Observation Source
 
@@ -353,7 +597,7 @@ BEC-007
 
 This separation keeps the detection rule focused on evaluating evidence while keeping database access inside the application and repository layers.
 
-The historical observation data passed to BEC-007 includes the persisted `email_sent_at` value.
+The historical observation data passed to BEC-007 includes the persisted `email_sent_at` value and previously analyzed email recipient information.
 
 ### Multiple Behavioral Anomalies
 
@@ -364,23 +608,55 @@ Established behavior:
   Hours:             08:00–17:00
   Days:              Monday–Friday
   Timezone offsets:  +0100
+
 Observed:
   Sunday 02:30 -0500
+
 Indicators:
   - Message sent outside established communication hours
   - Message sent outside established communication days
   - Message sent from an unexpected timezone offset
 ```
 
-Historical observations can provide an additional indicator:
+Historical observations can provide additional indicators:
 
 ```text
 Historical range:
   09:00–14:00
+
 Observed:
   02:30
+
 Indicator:
   - Message sent outside historically observed communication hours
+```
+
+Recipient behavior can provide additional indicators:
+
+```text
+Historical:
+  alice@example.com + finance@example.com
+
+Observed:
+  alice@example.com + legal@example.com
+
+Indicators:
+  - Message contains a historically unusual recipient relationship
+```
+
+A role anomaly can provide additional evidence:
+
+```text
+Historical:
+  To: alice@example.com
+  Cc: finance@example.com
+
+Observed:
+  To: finance@example.com
+  Cc: alice@example.com
+
+Indicator:
+  - Message contains a historically unusual recipient role relationship
 ```
 
 The indicators are independently evaluated and returned together when multiple behavioral conditions are violated.
@@ -393,8 +669,10 @@ All explicit behavioral baselines are optional.
 - If `typical_days` is supplied, the observed weekday is evaluated.
 - If `typical_timezone_offsets` is supplied, the observed `Date` header timezone offset is evaluated.
 - If sufficient historical sender observations are available, the historical sending-hour range is evaluated.
+- If sufficient historical observations contain usable timestamps, historical sending frequency is evaluated.
+- If sufficient historical observations contain usable recipient data, historical recipient behavior is evaluated.
 - An empty explicit behavioral baseline does not independently produce a behavioral detection.
-- Historical analysis is only performed when sufficient valid historical observations are available.
+- Historical analysis is only performed when sufficient valid historical observations are available for the relevant signal.
 
 This allows existing clients to provide only the behavioral information they currently maintain while supporting richer behavioral evidence as the system evolves.
 
@@ -410,6 +688,15 @@ BEC-007 exposes structured behavioral details that can support investigation, in
 - Typical timezone offsets
 - Historical observed hours
 - Historical observed-hour range
+- Historical sending frequency
+- Historical recipients
+- Unusual recipients
+- Historical recipient frequencies
+- Unusual recipient frequencies
+- Historical recipient co-occurrences
+- Unusual recipient pairs
+- Historical recipient role frequencies
+- Unusual recipient role pairs
 - Behavioral indicators
 
 The persisted analysis record also preserves `email_sent_at`, allowing the original message timestamp to remain available for historical analysis.
@@ -424,46 +711,18 @@ The currently implemented BEC-007 behavioral signals are:
 | Typical sending day | Supplied behavioral baseline | Implemented |
 | Typical timezone offset | Supplied behavioral baseline | Implemented |
 | Historical sending-hour range | Persisted sender observations | Implemented |
+| Historical sending frequency | Persisted sender observations | Implemented |
 | Historical recipient behavior | Persisted sender observations | Implemented |
+| Historical recipient frequency | Persisted sender observations | Implemented |
+| Historical recipient co-occurrence | Persisted sender observations | Implemented |
+| Historical recipient role anomaly | Persisted sender observations | Implemented |
 
 These signals are intentionally deterministic and explainable.
-
-### Historical Recipient Behavior
-
-BEC-007 also evaluates whether the current message is addressed to recipients that have not previously appeared in the sender's established communication history.
-
-The current recipient set is derived from the message's `To` and `Cc` fields. Historical recipients are recovered from persisted sender analyses, using the recipient data stored in each historical analysis result.
-
-Recipient values are normalized before comparison by:
-
-1. Removing surrounding whitespace.
-2. Converting addresses to lowercase.
-3. Removing duplicate addresses.
-4. Ignoring non-string recipient values.
-
-A minimum of three qualifying historical observations is required before recipient history is used as a behavioral baseline. Historical observations without usable `To` or `Cc` recipient data do not count toward this threshold.
-
-When a current recipient is absent from the established historical recipient set, BEC-007 records:
-
-```text
-Message sent to a previously unseen recipient
-```
-
-The detection result also exposes:
-
-- `historical_recipients` — recipients observed across the qualifying historical sender observations.
-- `unusual_recipients` — current recipients that were not observed in the historical baseline.
-
-This signal is a behavioral anomaly indicator rather than proof of malicious activity. A previously unseen recipient can be legitimate, for example when a sender begins communicating with a new customer, colleague, supplier, or business partner. The signal is therefore intended to be evaluated alongside the other BEC-007 behavioral indicators and the project’s other deterministic detection rules.
-
-The historical recipient baseline is derived from persisted analysis results rather than requiring a separate recipient-history database table or schema migration.
 
 ### Future Behavioral Analysis
 
 Future behavioral analysis may include:
 
-- Sender frequency
-- Recipient frequency
 - Response time
 - Participant count
 - Subject similarity
@@ -472,6 +731,7 @@ Future behavioral analysis may include:
 - Infrastructure frequency
 - Domain similarity
 - Reply-To frequency
+- Other statistically derived behavioral features
 
 These signals are not currently implemented by BEC-007.
 
@@ -589,6 +849,9 @@ Examples include:
 - Changes to normal communication schedules
 - Legitimate communication outside historical sending hours
 - Legitimate changes in sender timezone or working schedule
+- Legitimate changes in recipient relationships
+- Legitimate changes between `To` and `Cc` roles
+- One-off recipients or low-frequency recipients
 
 For this reason, detections should be interpreted using the complete analysis context.
 

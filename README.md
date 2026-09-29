@@ -25,6 +25,12 @@ The current implementation provides:
 - Sender infrastructure anomaly detection
 - Conversation hijacking analysis
 - Deterministic behavioral communication anomaly detection
+- Historical sender behavior analysis
+- Historical recipient behavior analysis
+- Historical sending frequency analysis
+- Historical recipient frequency analysis
+- Historical recipient co-occurrence analysis
+- Historical recipient role analysis
 - Explainable per-rule risk scoring
 - FastAPI API
 - PostgreSQL persistence
@@ -55,6 +61,7 @@ Business email attacks do not always look like traditional phishing. An attacker
 - Send messages from previously unseen infrastructure
 - Modify communication patterns
 - Use familiar subjects, signatures, and conversation history
+- Alter established recipient relationships or recipient roles
 
 **Example:**
 
@@ -80,11 +87,12 @@ The purpose of Email Conversation Integrity Detection is to identify these incon
 7. Evaluate SPF, DKIM, and DMARC results where available.
 8. Identify suspicious infrastructure changes.
 9. Detect abnormal communication behavior.
-10. Generate explainable risk scores.
-11. Produce SOC-friendly detection results.
-12. Normalize detection results into SIEM events.
-13. Integrate detections with SIEM platforms.
-14. Provide an extensible foundation for behavioral anomaly detection.
+10. Analyze historical sender and recipient communication patterns.
+11. Generate explainable risk scores.
+12. Produce SOC-friendly detection results.
+13. Normalize detection results into SIEM events.
+14. Integrate detections with SIEM platforms.
+15. Provide an extensible foundation for behavioral anomaly detection.
 
 ---
 
@@ -385,13 +393,20 @@ The current implementation combines conversation/thread indicators with sender i
 
 Identifies unusual communication behavior compared with an established sender or conversation baseline.
 
-The current MVP uses deterministic temporal behavioral analysis based on the supplied communication baseline. It does not require machine learning or historical database queries when an explicit behavioral baseline is supplied.
+The current implementation uses deterministic behavioral analysis. It can evaluate both explicitly supplied behavioral baselines and historical observations retrieved for a known sender.
 
 Current behavioral signals include:
 
-- Sending hour
-- Day of week
-- Sender-declared timezone offset
+- Typical sending hours
+- Typical sending days
+- Typical sender timezone offset
+- Historical sending-hour range
+- Historical sender behavior
+- Historical recipient behavior
+- Historical sending frequency
+- Historical recipient frequency
+- Historical recipient co-occurrence
+- Historical recipient role relationships
 
 #### Sending Hour
 
@@ -465,6 +480,127 @@ Indicator:
 
 > This signal evaluates the timezone offset declared by the message's `Date` header. It does not establish the sender's physical location or prove that the sender was actually operating from that timezone.
 
+#### Historical Sender Behavior
+
+When historical observations are available for a known sender, BEC-007 can compare the current message against previously observed communication behavior.
+
+Historical observations can contribute information about:
+
+- Previously observed sending hours
+- Historical sending frequency
+- Historical recipient relationships
+- Historical recipient frequency
+- Historical recipient co-occurrence
+- Historical recipient role relationships
+
+> Historical analysis requires a minimum number of valid observations before a behavioral relationship is established. This reduces the likelihood of treating a single historical message as a reliable behavioral baseline.
+
+#### Historical Sending Frequency
+
+The sending-frequency signal evaluates the interval between the current message and historical messages from the same sender.
+
+A message may be considered behaviorally unusual when it occurs at a substantially different cadence from the sender's established historical communication frequency.
+
+```text
+Historical behavior:
+  Typical interval: 60 minutes
+
+Observed:
+  Current interval: 5 minutes
+
+Indicator:
+  - Message sent at an unusually high communication frequency
+```
+
+This signal is intended to identify changes in communication cadence rather than determine whether a specific sending interval is inherently malicious.
+
+#### Historical Recipient Behavior
+
+BEC-007 can compare the recipients of the current message with recipients observed in the sender's historical communication.
+
+The analysis distinguishes between:
+
+- Previously observed recipients
+- Recipients that are unusual for the sender
+- Recipient relationships that are historically established
+- Recipient relationships that have not previously been observed
+
+```text
+Historical recipients:
+  alice@company.com
+  finance@company.com
+  procurement@company.com
+
+Observed:
+  hr@company.com
+
+Indicator:
+  - Message contains a historically unusual recipient
+```
+
+Recipient analysis considers both `To` and `Cc` recipients.
+
+#### Historical Recipient Frequency
+
+Recipient frequency measures how often a particular recipient has appeared in the sender's historical messages.
+
+A recipient may be considered unusual when the historical frequency of that recipient falls below the configured behavioral threshold.
+
+This provides a more granular signal than simply asking whether the recipient has ever appeared before.
+
+#### Historical Recipient Co-Occurrence
+
+Recipient co-occurrence evaluates whether recipients that appear together in the current message have historically appeared together in the same communication.
+
+**For example:**
+
+```text
+Historical behavior:
+  To: alice@company.com
+  Cc: finance@company.com
+
+Observed:
+  To: alice@company.com
+  Cc: hr@company.com
+
+Indicator:
+  - Message contains an unusual recipient relationship
+```
+
+The co-occurrence analysis is based on normalized recipient pairs and requires sufficient historical observations before an established relationship is inferred.
+
+An unseen recipient pair can be treated as having no established historical co-occurrence, while previously established recipient pairs can be compared against their historical frequency.
+
+#### Historical Recipient Role Anomaly
+
+Recipient role analysis extends recipient co-occurrence analysis by evaluating whether established recipient pairs normally occupy the same `To` and `Cc` roles.
+
+**For example:**
+
+```text
+Historical behavior:
+  To: alice@company.com
+  Cc: finance@company.com
+
+Observed:
+  To: finance@company.com
+  Cc: alice@company.com
+
+Indicator:
+  - Message contains a historically unusual recipient role relationship
+```
+
+This signal is different from recipient co-occurrence. The recipients may both be familiar and may normally appear together, while their current `To`/`Cc` roles differ from the established historical relationship.
+
+**Recipient role analysis:**
+
+- Requires an established recipient relationship
+- Uses normalized `To` and `Cc` recipients
+- Treats `To` as the deterministic role when a recipient appears in both `To` and `Cc`
+- Requires sufficient historical observations
+- Does not replace the recipient co-occurrence detector
+- Does not independently classify an entirely unseen recipient pair
+
 #### Multiple Behavioral Anomalies
 
 BEC-007 can report multiple behavioral inconsistencies for the same message.
@@ -475,27 +611,35 @@ Established behavior:
   Days:              Monday–Friday
   Timezone offsets:  +0100
 
+Historical behavior:
+  Normal recipients:
+    alice@company.com
+    finance@company.com
+
 Observed:
   Sunday 02:30 -0500
+  Recipient relationship differs from historical behavior
 
 Indicators:
   - Message sent outside established communication hours
   - Message sent outside established communication days
   - Message sent from an unexpected timezone offset
+  - Message contains a historically unusual recipient relationship
 ```
 
 The indicators are independently evaluated and returned together when multiple baseline conditions are violated.
 
 #### Behavioral Baselines
 
-All behavioral baselines are optional.
+Explicit behavioral baselines are optional.
 
 - If `typical_hours` is supplied, the observed sending hour is evaluated.
 - If `typical_days` is supplied, the observed weekday is evaluated.
 - If `typical_timezone_offsets` is supplied, the observed `Date` header timezone offset is evaluated.
+- Historical observations can provide additional behavioral signals when sufficient historical data is available.
 - An empty behavioral baseline does not independently produce a behavioral detection.
 
-The detection result preserves the behavioral evidence used by the rule, including:
+The detection result preserves behavioral evidence used by the rule, including applicable:
 
 - Observed hour
 - Typical hours
@@ -503,9 +647,13 @@ The detection result preserves the behavioral evidence used by the rule, includi
 - Typical days
 - Observed timezone offset
 - Typical timezone offsets
+- Historical observations
+- Historical recipient frequencies
+- Historical recipient co-occurrences
+- Historical recipient role frequencies
 - Behavioral indicators
 
-> Future behavioral signals should only be introduced when the system has a clearly defined observation source or baseline for that signal.
+> Behavioral signals should only be introduced when the system has a clearly defined observation source or baseline for that signal.
 
 ---
 
@@ -844,7 +992,7 @@ python3 -m pytest -v
 **Current regression baseline:**
 
 ```text
-192 passed
+237 passed
 1 warning
 ```
 
@@ -870,6 +1018,11 @@ The test suite covers:
 - Elastic integration
 - Wazuh integration
 - Application SIEM configuration
+- Behavioral communication anomaly detection
+- Historical behavioral analysis
+- Historical recipient frequency analysis
+- Historical recipient co-occurrence analysis
+- Historical recipient role analysis
 
 ---
 
@@ -907,7 +1060,7 @@ The project follows incremental development with focused tests followed by full 
 | BEC-004 Authentication Anomaly | ✅ |
 | BEC-005 Infrastructure Anomaly | ✅ |
 | BEC-006 Conversation Hijacking | ✅ |
-| BEC-007 Behavioral Anomaly | ✅ |
+| BEC-007 Behavioral Anomaly | ⏳ Expanding |
 | FastAPI | ✅ |
 | PostgreSQL | ✅ |
 | Docker / Docker Compose | ✅ |
@@ -923,6 +1076,8 @@ The project follows incremental development with focused tests followed by full 
 | Application SIEM configuration | ✅ |
 | Behavioral detection expansion | ⏳ |
 | ML anomaly detection | ⏳ |
+
+> BEC-007 has an operational deterministic implementation, but behavioral detection expansion remains in progress as additional historical communication signals are added and validated.
 
 ---
 
@@ -970,6 +1125,8 @@ A future experimental component will investigate whether unsupervised machine le
 - `domain_similarity`
 - `authentication_results`
 - `reply_to_frequency`
+- `recipient_cooccurrence_frequency`
+- `recipient_role_frequency`
 
 **Candidate models include:**
 
@@ -1028,7 +1185,7 @@ The current application architecture can be summarized as:
                                              ▼
                                     ┌──────────────────┐
                                     │ Integration      │
-                                    │ Manager         │
+                                    │ Manager          │
                                     └────────┬─────────┘
                                              │
                                   ┌──────────┼──────────┐
