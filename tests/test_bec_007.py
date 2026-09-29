@@ -7,16 +7,26 @@ def build_context(
     date: str,
     typical_hours: list[int],
     recipients: list[str] | None = None,
+    to_recipients: list[str] | None = None,
+    cc_recipients: list[str] | None = None,
     typical_days: list[int] | None = None,
     typical_timezone_offsets: list[int] | None = None,
     historical_observations: list[dict] | None = None,
 ) -> DetectionContext:
     """Build a detection context for BEC-007 tests."""
 
+    email_data = {
+        "date": date,
+    }
+
+    if to_recipients is not None:
+        email_data["to"] = to_recipients
+
+    if cc_recipients is not None:
+        email_data["cc"] = cc_recipients
+
     return DetectionContext(
-        email_data={
-            "date": date,
-        },
+        email_data=email_data,
         identity={
             "display_name": "Bob Supplier",
             "email_address": "bob@supplier.com",
@@ -1260,3 +1270,288 @@ def test_bec_007_requires_minimum_historical_observations_for_cooccurrence():
     assert result["indicators"] == []
     assert result["historical_recipient_cooccurrences"] == {}
     assert result["unusual_recipient_pairs"] == []
+
+
+def test_bec_007_detects_unusual_recipient_role_relationship():
+    """BEC-007 should detect an established pair appearing in unusual roles."""
+
+    rule = BehavioralCommunicationAnomalyRule()
+
+    context = build_context(
+        date="Fri, 18 Sep 2026 10:00:00 +0100",
+        typical_hours=[10],
+        recipients=[
+            "alice@company.com",
+            "finance@company.com",
+        ],
+        to_recipients=[
+            "finance@company.com",
+        ],
+        cc_recipients=[
+            "alice@company.com",
+        ],
+        historical_observations=[
+            {
+                "email_sent_at": "2026-09-15T09:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": ["finance@company.com"],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-16T10:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": ["finance@company.com"],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-17T10:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": ["finance@company.com"],
+                    },
+                },
+            },
+        ],
+    )
+
+    result = rule.evaluate(context)
+
+    assert result["matched"] is True
+    assert (
+        "Message contains a historically unusual recipient role relationship"
+        in result["indicators"]
+    )
+    assert result["unusual_recipient_role_pairs"] == [
+        (
+            "alice@company.com",
+            "cc",
+            "finance@company.com",
+            "to",
+        )
+    ]
+
+
+def test_bec_007_allows_established_recipient_role_relationship():
+    """BEC-007 should allow a recipient pair in its established roles."""
+
+    rule = BehavioralCommunicationAnomalyRule()
+
+    context = build_context(
+        date="Fri, 18 Sep 2026 10:00:00 +0100",
+        typical_hours=[10],
+        recipients=[
+            "alice@company.com",
+            "finance@company.com",
+        ],
+        to_recipients=[
+            "alice@company.com",
+        ],
+        cc_recipients=[
+            "finance@company.com",
+        ],
+        historical_observations=[
+            {
+                "email_sent_at": "2026-09-15T09:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": ["finance@company.com"],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-16T10:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": ["finance@company.com"],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-17T10:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": ["finance@company.com"],
+                    },
+                },
+            },
+        ],
+    )
+
+    result = rule.evaluate(context)
+
+    assert result["matched"] is False
+    assert result["unusual_recipient_role_pairs"] == []
+
+
+def test_bec_007_handles_to_and_cc_roles_correctly():
+    """BEC-007 should preserve To and Cc roles when building history."""
+
+    rule = BehavioralCommunicationAnomalyRule()
+
+    context = build_context(
+        date="Fri, 18 Sep 2026 11:00:00 +0100",
+        typical_hours=[11],
+        recipients=[
+            "alice@company.com",
+            "finance@company.com",
+        ],
+        to_recipients=[
+            "alice@company.com",
+        ],
+        cc_recipients=[
+            "finance@company.com",
+        ],
+        historical_observations=[
+            {
+                "email_sent_at": "2026-09-15T09:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": ["finance@company.com"],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-16T10:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": ["finance@company.com"],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-17T10:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": ["finance@company.com"],
+                    },
+                },
+            },
+        ],
+    )
+
+    result = rule.evaluate(context)
+
+    assert result["historical_recipient_role_frequencies"] == {
+        (
+            "alice@company.com",
+            "to",
+            "finance@company.com",
+            "cc",
+        ): 1.0
+    }
+
+    assert result["unusual_recipient_role_pairs"] == []
+
+
+def test_bec_007_does_not_use_role_anomaly_for_unseen_recipient_pair():
+    """BEC-007 should leave unseen recipient pairs to co-occurrence detection."""
+
+    rule = BehavioralCommunicationAnomalyRule()
+
+    context = build_context(
+        date="Fri, 18 Sep 2026 11:00:00 +0100",
+        typical_hours=[11],
+        recipients=[
+            "alice@company.com",
+            "finance@company.com",
+        ],
+        to_recipients=[
+            "alice@company.com",
+        ],
+        cc_recipients=[
+            "finance@company.com",
+        ],
+        historical_observations=[
+            {
+                "email_sent_at": "2026-09-15T09:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-16T10:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-17T10:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+        ],
+    )
+
+    result = rule.evaluate(context)
+
+    assert result["unusual_recipient_role_pairs"] == []
+
+
+def test_bec_007_requires_minimum_historical_observations_for_recipient_roles():
+    """BEC-007 should require three observations for recipient role detection."""
+
+    rule = BehavioralCommunicationAnomalyRule()
+
+    context = build_context(
+        date="Fri, 18 Sep 2026 11:00:00 +0100",
+        typical_hours=[11],
+        recipients=[
+            "alice@company.com",
+            "finance@company.com",
+        ],
+        to_recipients=[
+            "finance@company.com",
+        ],
+        cc_recipients=[
+            "alice@company.com",
+        ],
+        historical_observations=[
+            {
+                "email_sent_at": "2026-09-15T09:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": ["finance@company.com"],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-16T10:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": ["finance@company.com"],
+                    },
+                },
+            },
+        ],
+    )
+
+    result = rule.evaluate(context)
+
+    assert result["matched"] is False
+    assert result["historical_recipient_role_frequencies"] == {}
+    assert result["unusual_recipient_role_pairs"] == []
