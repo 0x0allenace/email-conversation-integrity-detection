@@ -914,3 +914,349 @@ def test_bec_007_allows_normal_sending_frequency():
     assert result["indicators"] == []
     assert result["historical_frequency_interval"] == 1440.0
     assert result["current_frequency_interval"] == 1440.0
+
+
+def test_bec_007_detects_unusual_recipient_cooccurrence():
+    """BEC-007 should detect an unusual relationship between known recipients."""
+
+    rule = BehavioralCommunicationAnomalyRule()
+
+    context = build_context(
+        date="Wed, 23 Sep 2026 10:30:00 +0100",
+        typical_hours=[10],
+        recipients=[
+            "alice@company.com",
+            "ceo@company.com",
+        ],
+        historical_observations=[
+            {
+                "email_sent_at": "2026-09-20T09:30:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-21T10:30:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["ceo@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-22T14:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-23T09:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-23T09:30:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-23T10:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-23T10:15:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-23T10:20:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-23T10:25:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-23T10:28:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+        ],
+    )
+
+    result = rule.evaluate(context)
+
+    assert result["matched"] is True
+    assert result["unusual_recipient_pairs"] == [
+        (
+            "alice@company.com",
+            "ceo@company.com",
+        )
+    ]
+    assert (
+        "Message contains a historically unusual recipient relationship"
+        in result["indicators"]
+    )
+
+    assert result["historical_recipient_cooccurrences"] == {}
+
+
+def test_bec_007_allows_established_recipient_cooccurrence():
+    """BEC-007 should allow a recipient relationship seen historically."""
+
+    rule = BehavioralCommunicationAnomalyRule()
+
+    context = build_context(
+        date="Wed, 23 Sep 2026 10:30:00 +0100",
+        typical_hours=[10],
+        recipients=[
+            "alice@company.com",
+            "finance@company.com",
+        ],
+        historical_observations=[
+            {
+                "email_sent_at": "2026-09-20T09:30:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": ["finance@company.com"],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-21T10:30:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": ["finance@company.com"],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-22T14:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": ["finance@company.com"],
+                    },
+                },
+            },
+        ],
+    )
+
+    result = rule.evaluate(context)
+
+    assert result["matched"] is False
+    assert result["indicators"] == []
+    assert result["unusual_recipient_pairs"] == []
+
+    assert (
+        result["historical_recipient_cooccurrences"][
+            (
+                "alice@company.com",
+                "finance@company.com",
+            )
+        ]
+        == 1.0
+    )
+
+
+def test_bec_007_combines_to_and_cc_for_recipient_cooccurrence():
+    """BEC-007 should treat To and Cc recipients as one relationship set."""
+
+    rule = BehavioralCommunicationAnomalyRule()
+
+    context = build_context(
+        date="Wed, 23 Sep 2026 10:30:00 +0100",
+        typical_hours=[10],
+        recipients=[
+            "finance@company.com",
+            "alice@company.com",
+        ],
+        historical_observations=[
+            {
+                "email_sent_at": "2026-09-20T09:30:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": ["finance@company.com"],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-21T10:30:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": ["finance@company.com"],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-22T14:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": ["finance@company.com"],
+                    },
+                },
+            },
+        ],
+    )
+
+    result = rule.evaluate(context)
+
+    assert result["matched"] is False
+    assert result["unusual_recipient_pairs"] == []
+
+    assert (
+        result["historical_recipient_cooccurrences"][
+            (
+                "alice@company.com",
+                "finance@company.com",
+            )
+        ]
+        == 1.0
+    )
+
+
+def test_bec_007_does_not_use_cooccurrence_for_unseen_recipient():
+    """BEC-007 should use the existing unseen-recipient signal for new recipients."""
+
+    rule = BehavioralCommunicationAnomalyRule()
+
+    context = build_context(
+        date="Wed, 23 Sep 2026 10:30:00 +0100",
+        typical_hours=[10],
+        recipients=[
+            "alice@company.com",
+            "attacker@evil.com",
+        ],
+        historical_observations=[
+            {
+                "email_sent_at": "2026-09-20T09:30:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-21T10:30:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-22T14:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+        ],
+    )
+
+    result = rule.evaluate(context)
+
+    assert result["matched"] is True
+    assert result["unusual_recipients"] == [
+        "attacker@evil.com"
+    ]
+    assert result["unusual_recipient_pairs"] == []
+
+    assert (
+        "Message sent to a previously unseen recipient"
+        in result["indicators"]
+    )
+
+    assert (
+        "Message contains a historically unusual recipient relationship"
+        not in result["indicators"]
+    )
+
+
+def test_bec_007_requires_minimum_historical_observations_for_cooccurrence():
+    """BEC-007 should require three recipient-bearing observations for co-occurrence detection."""
+
+    rule = BehavioralCommunicationAnomalyRule()
+
+    context = build_context(
+        date="Wed, 23 Sep 2026 10:30:00 +0100",
+        typical_hours=[10],
+        recipients=[
+            "alice@company.com",
+            "ceo@company.com",
+        ],
+        historical_observations=[
+            {
+                "email_sent_at": "2026-09-20T09:30:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-21T10:30:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["ceo@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+        ],
+    )
+
+    result = rule.evaluate(context)
+
+    assert result["matched"] is False
+    assert result["indicators"] == []
+    assert result["historical_recipient_cooccurrences"] == {}
+    assert result["unusual_recipient_pairs"] == []

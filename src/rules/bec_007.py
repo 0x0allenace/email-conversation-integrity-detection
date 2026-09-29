@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from email.utils import parsedate_to_datetime
+from itertools import combinations
 from statistics import median
 from typing import Any
 
@@ -21,6 +22,7 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
     MIN_FREQUENCY_INTERVAL_MINUTES = 1
     FREQUENCY_ANOMALY_RATIO = 0.25
     RECIPIENT_FREQUENCY_THRESHOLD = 0.10
+    RECIPIENT_COOCCURRENCE_THRESHOLD = 0.10
 
     def evaluate(
         self,
@@ -84,6 +86,20 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
             )
         )
 
+        historical_recipient_cooccurrences = (
+            self._build_historical_recipient_cooccurrences(
+                context.historical_observations
+            )
+        )
+
+        unusual_recipient_pairs = (
+            self._find_unusual_recipient_pairs(
+                context.recipients,
+                historical_recipients,
+                historical_recipient_cooccurrences,
+            )
+        )
+
         historical_timestamps = (
             self._extract_historical_timestamps(
                 context.historical_observations
@@ -111,6 +127,11 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
                     "Message sent to a historically infrequent recipient"
                 )
 
+            if unusual_recipient_pairs:
+                indicators.append(
+                    "Message contains a historically unusual recipient relationship"
+                )
+
             return self._build_result(
                 matched=bool(indicators),
                 indicators=indicators,
@@ -128,6 +149,12 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
                     historical_recipient_frequencies
                 ),
                 infrequent_recipients=infrequent_recipients,
+                historical_recipient_cooccurrences=(
+                    historical_recipient_cooccurrences
+                ),
+                unusual_recipient_pairs=(
+                    unusual_recipient_pairs
+                ),
                 historical_frequency_interval=(
                     historical_frequency_interval
                 ),
@@ -180,6 +207,11 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
                 "Message sent to a historically infrequent recipient"
             )
 
+        if unusual_recipient_pairs:
+            indicators.append(
+                "Message contains a historically unusual recipient relationship"
+            )
+
         current_frequency_interval = (
             self._calculate_current_frequency_interval(
                 parsed_date,
@@ -214,6 +246,12 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
                 historical_recipient_frequencies
             ),
             infrequent_recipients=infrequent_recipients,
+            historical_recipient_cooccurrences=(
+                historical_recipient_cooccurrences
+            ),
+            unusual_recipient_pairs=(
+                unusual_recipient_pairs
+            ),
             historical_frequency_interval=(
                 historical_frequency_interval
             ),
@@ -409,6 +447,69 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
         }
 
     @classmethod
+    def _build_historical_recipient_cooccurrences(
+        cls,
+        observations: list[dict[str, Any]],
+    ) -> dict[tuple[str, str], float]:
+        """Build historical recipient-pair co-occurrence frequencies."""
+
+        if len(observations) < cls.MIN_HISTORICAL_OBSERVATIONS:
+            return {}
+
+        pair_counts: dict[tuple[str, str], int] = {}
+        valid_observations = 0
+
+        for observation in observations:
+            if not isinstance(observation, dict):
+                continue
+
+            result = observation.get("result")
+
+            if not isinstance(result, dict):
+                continue
+
+            email = result.get("email")
+
+            if not isinstance(email, dict):
+                continue
+
+            recipients = (
+                cls._normalize_recipients(
+                    email.get("to", [])
+                )
+                + cls._normalize_recipients(
+                    email.get("cc", [])
+                )
+            )
+
+            recipients = cls._normalize_recipients(
+                recipients
+            )
+
+            if not recipients:
+                continue
+
+            valid_observations += 1
+
+            for pair in combinations(
+                sorted(recipients),
+                2,
+            ):
+                pair_counts[pair] = (
+                    pair_counts.get(pair, 0) + 1
+                )
+
+        if valid_observations < cls.MIN_HISTORICAL_OBSERVATIONS:
+            return {}
+
+        return {
+            pair: count / valid_observations
+            for pair, count in sorted(
+                pair_counts.items()
+            )
+        }
+
+    @classmethod
     def _find_unusual_recipients(
         cls,
         current_recipients: list[str],
@@ -457,6 +558,49 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
                 <= cls.RECIPIENT_FREQUENCY_THRESHOLD
             )
         ]
+
+    @classmethod
+    def _find_unusual_recipient_pairs(
+        cls,
+        current_recipients: list[str],
+        historical_recipients: set[str],
+        historical_cooccurrences: dict[tuple[str, str], float],
+    ) -> list[tuple[str, str]]:
+        """Find historically unusual relationships between known recipients."""
+
+        if len(historical_recipients) < 2:
+            return []
+
+        normalized_current_recipients = cls._normalize_recipients(
+            current_recipients
+        )
+
+        known_current_recipients = [
+            recipient
+            for recipient in normalized_current_recipients
+            if recipient in historical_recipients
+        ]
+
+        if len(known_current_recipients) < 2:
+            return []
+
+        unusual_pairs: list[tuple[str, str]] = []
+
+        for pair in combinations(
+            sorted(known_current_recipients),
+            2,
+        ):
+            frequency = historical_cooccurrences.get(
+                pair,
+                0.0,
+            )
+
+            if frequency <= cls.RECIPIENT_COOCCURRENCE_THRESHOLD:
+                unusual_pairs.append(
+                    pair
+                )
+
+        return unusual_pairs
 
     @staticmethod
     def _normalize_recipients(
@@ -718,6 +862,13 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
         unusual_recipients: list[str],
         historical_recipient_frequencies: dict[str, float],
         infrequent_recipients: list[str],
+        historical_recipient_cooccurrences: dict[
+            tuple[str, str],
+            float,
+        ],
+        unusual_recipient_pairs: list[
+            tuple[str, str]
+        ],
         historical_frequency_interval: float | None,
         current_frequency_interval: float | None,
     ) -> dict[str, Any]:
@@ -745,6 +896,12 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
                 historical_recipient_frequencies
             ),
             "infrequent_recipients": infrequent_recipients,
+            "historical_recipient_cooccurrences": (
+                historical_recipient_cooccurrences
+            ),
+            "unusual_recipient_pairs": (
+                unusual_recipient_pairs
+            ),
             "historical_frequency_interval": (
                 historical_frequency_interval
             ),
