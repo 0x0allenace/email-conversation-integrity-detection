@@ -24,6 +24,7 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
     RECIPIENT_FREQUENCY_THRESHOLD = 0.10
     RECIPIENT_COOCCURRENCE_THRESHOLD = 0.10
     RECIPIENT_ROLE_THRESHOLD = 0.10
+    INDIVIDUAL_RECIPIENT_ROLE_THRESHOLD = 0.10
 
     def evaluate(
         self,
@@ -107,6 +108,19 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
             )
         )
 
+        historical_individual_recipient_role_frequencies = (
+            self._build_historical_individual_recipient_role_frequencies(
+                context.historical_observations
+            )
+        )
+
+        unusual_recipient_roles = (
+            self._find_unusual_recipient_roles(
+                context.email_data,
+                historical_individual_recipient_role_frequencies,
+            )
+        )
+
         unusual_recipient_role_pairs = (
             self._find_unusual_recipient_role_pairs(
                 context.email_data,
@@ -166,6 +180,11 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
                     "Message contains a historically unusual recipient role relationship"
                 )
 
+            if unusual_recipient_roles:
+                indicators.append(
+                    "Message contains a historically unusual individual recipient role"
+                )
+
             if unusual_recipient_groups:
                 indicators.append(
                     "Message contains a historically unusual recipient group"
@@ -196,6 +215,12 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
                 ),
                 historical_recipient_role_frequencies=(
                     historical_recipient_role_frequencies
+                ),
+                historical_individual_recipient_role_frequencies=(
+                    historical_individual_recipient_role_frequencies
+                ),
+                unusual_recipient_roles=(
+                    unusual_recipient_roles
                 ),
                 unusual_recipient_role_pairs=(
                     unusual_recipient_role_pairs
@@ -268,6 +293,11 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
                 "Message contains a historically unusual recipient role relationship"
             )
 
+        if unusual_recipient_roles:
+            indicators.append(
+                "Message contains a historically unusual individual recipient role"
+            )
+
         if unusual_recipient_groups:
             indicators.append(
                 "Message contains a historically unusual recipient group"
@@ -315,6 +345,12 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
             ),
             historical_recipient_role_frequencies=(
                 historical_recipient_role_frequencies
+            ),
+            historical_individual_recipient_role_frequencies=(
+                historical_individual_recipient_role_frequencies
+            ),
+            unusual_recipient_roles=(
+                unusual_recipient_roles
             ),
             unusual_recipient_role_pairs=(
                 unusual_recipient_role_pairs
@@ -782,6 +818,87 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
         return historical_role_frequencies
 
     @classmethod
+    def _build_historical_individual_recipient_role_frequencies(
+        cls,
+        observations: list[dict[str, Any]],
+    ) -> dict[
+        tuple[str, str],
+        float,
+    ]:
+        """Build historical To/Cc role frequencies for each recipient."""
+
+        if len(observations) < cls.MIN_HISTORICAL_OBSERVATIONS:
+            return {}
+
+        role_counts: dict[
+            tuple[str, str],
+            int,
+        ] = {}
+
+        recipient_counts: dict[str, int] = {}
+
+        valid_observations = 0
+
+        for observation in observations:
+            if not isinstance(observation, dict):
+                continue
+
+            result = observation.get("result")
+
+            if not isinstance(result, dict):
+                continue
+
+            email = result.get("email")
+
+            if not isinstance(email, dict):
+                continue
+
+            recipient_roles = cls._extract_recipient_roles(
+                email
+            )
+
+            if not recipient_roles:
+                continue
+
+            valid_observations += 1
+
+            for recipient, role in recipient_roles.items():
+                recipient_counts[recipient] = (
+                    recipient_counts.get(
+                        recipient,
+                        0,
+                    )
+                    + 1
+                )
+
+                role_key = (
+                    recipient,
+                    role,
+                )
+
+                role_counts[role_key] = (
+                    role_counts.get(
+                        role_key,
+                        0,
+                    )
+                    + 1
+                )
+
+        if valid_observations < cls.MIN_HISTORICAL_OBSERVATIONS:
+            return {}
+
+        return {
+            role_key: count / recipient_counts[role_key[0]]
+            for role_key, count in sorted(
+                role_counts.items()
+            )
+            if recipient_counts.get(
+                role_key[0],
+                0,
+            ) > 0
+        }
+
+    @classmethod
     def _find_unusual_recipients(
         cls,
         current_recipients: list[str],
@@ -873,6 +990,66 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
                 )
 
         return unusual_pairs
+
+    @classmethod
+    def _find_unusual_recipient_roles(
+        cls,
+        current_email: dict[str, Any],
+        historical_role_frequencies: dict[
+            tuple[str, str],
+            float,
+        ],
+    ) -> list[tuple[str, str]]:
+        """Find known recipients using an historically unusual To/Cc role."""
+
+        if not historical_role_frequencies:
+            return []
+
+        current_recipient_roles = cls._extract_recipient_roles(
+            current_email
+        )
+
+        if not current_recipient_roles:
+            return []
+
+        historical_recipients = {
+            recipient
+            for recipient, _ in historical_role_frequencies
+        }
+
+        known_current_recipients = [
+            recipient
+            for recipient in current_recipient_roles
+            if recipient in historical_recipients
+        ]
+
+        unusual_roles: list[tuple[str, str]] = []
+
+        for recipient in sorted(
+            known_current_recipients
+        ):
+            role = current_recipient_roles[recipient]
+
+            role_frequency = historical_role_frequencies.get(
+                (
+                    recipient,
+                    role,
+                ),
+                0.0,
+            )
+
+            if (
+                role_frequency
+                <= cls.INDIVIDUAL_RECIPIENT_ROLE_THRESHOLD
+            ):
+                unusual_roles.append(
+                    (
+                        recipient,
+                        role,
+                    )
+                )
+
+        return unusual_roles
 
     @classmethod
     def _find_unusual_recipient_role_pairs(
@@ -1267,6 +1444,13 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
             tuple[str, str, str, str],
             float,
         ],
+        historical_individual_recipient_role_frequencies: dict[
+            tuple[str, str],
+            float,
+        ],
+        unusual_recipient_roles: list[
+            tuple[str, str]
+        ],
         unusual_recipient_role_pairs: list[
             tuple[str, str, str, str]
         ],
@@ -1312,6 +1496,12 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
             ),
             "historical_recipient_role_frequencies": (
                 historical_recipient_role_frequencies
+            ),
+            "historical_individual_recipient_role_frequencies": (
+                historical_individual_recipient_role_frequencies
+            ),
+            "unusual_recipient_roles": (
+                unusual_recipient_roles
             ),
             "unusual_recipient_role_pairs": (
                 unusual_recipient_role_pairs
