@@ -2689,3 +2689,627 @@ def test_bec_007_ignores_other_recipient_messages_when_calculating_recency():
     }
 
     assert result["matched"] is False
+
+
+def test_bec_007_calculates_historical_recipient_transition_frequency():
+
+    """BEC-007 should calculate frequency for adjacent recipient groups."""
+
+    rule = BehavioralCommunicationAnomalyRule()
+
+    context = build_context(
+
+        date="Mon, 14 Sep 2026 10:00:00 +0000",
+
+        typical_hours=[10],
+
+        recipients=[
+
+            "alice@company.com",
+
+        ],
+
+        to_recipients=[
+
+            "alice@company.com",
+
+        ],
+
+        historical_observations=[
+
+            {
+
+                "email_sent_at": "2026-09-01T10:00:00+00:00",
+
+                "result": {
+
+                    "email": {
+
+                        "to": ["alice@company.com"],
+
+                        "cc": [],
+
+                    },
+
+                },
+
+            },
+
+            {
+
+                "email_sent_at": "2026-09-02T10:00:00+00:00",
+
+                "result": {
+
+                    "email": {
+
+                        "to": ["finance@company.com"],
+
+                        "cc": [],
+
+                    },
+
+                },
+
+            },
+
+            {
+
+                "email_sent_at": "2026-09-03T10:00:00+00:00",
+
+                "result": {
+
+                    "email": {
+
+                        "to": ["alice@company.com"],
+
+                        "cc": [],
+
+                    },
+
+                },
+
+            },
+
+            {
+
+                "email_sent_at": "2026-09-04T10:00:00+00:00",
+
+                "result": {
+
+                    "email": {
+
+                        "to": ["finance@company.com"],
+
+                        "cc": [],
+
+                    },
+
+                },
+
+            },
+
+        ],
+
+    )
+
+    result = rule.evaluate(context)
+
+    assert (
+
+        result["historical_recipient_transition_frequencies"][
+
+            (
+
+                ("alice@company.com",),
+
+                ("finance@company.com",),
+
+            )
+
+        ]
+
+        == 2 / 3
+
+    )
+
+    assert (
+
+        result["historical_recipient_transition_frequencies"][
+
+            (
+
+                ("finance@company.com",),
+
+                ("alice@company.com",),
+
+            )
+
+        ]
+
+        == 1 / 3
+
+    )
+
+
+
+def test_bec_007_calculates_current_recipient_transition():
+
+    """BEC-007 should expose the latest historical group to current group transition."""
+
+    rule = BehavioralCommunicationAnomalyRule()
+
+    context = build_context(
+        date="Mon, 14 Sep 2026 10:00:00 +0000",
+        typical_hours=[10],
+        recipients=[
+            "finance@company.com",
+        ],
+        to_recipients=[
+            "finance@company.com",
+        ],
+        historical_observations=[
+            {
+                "email_sent_at": "2026-09-01T10:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-02T10:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["finance@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-03T10:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+        ],
+    )
+
+    result = rule.evaluate(context)
+
+    assert result["current_recipient_transition"] == (
+        ("alice@company.com",),
+        ("finance@company.com",),
+    )
+
+
+def test_bec_007_detects_unusual_recipient_transition():
+
+    """BEC-007 should detect a recipient transition that is historically unusual."""
+
+    rule = BehavioralCommunicationAnomalyRule()
+
+    context = build_context(
+        date="Mon, 14 Sep 2026 10:00:00 +0000",
+        typical_hours=[10],
+        recipients=[
+            "hr@company.com",
+        ],
+        to_recipients=[
+            "hr@company.com",
+        ],
+        historical_observations=[
+            {
+                "email_sent_at": "2026-09-01T10:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-02T10:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["finance@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-03T10:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+        ],
+    )
+
+    result = rule.evaluate(context)
+
+    assert result["current_recipient_transition"] == (
+        ("alice@company.com",),
+        ("hr@company.com",),
+    )
+
+    assert (
+        (
+            ("alice@company.com",),
+            ("hr@company.com",),
+        )
+        in result["unusual_recipient_transitions"]
+    )
+
+    assert (
+        "Message follows an unusual recipient communication sequence"
+        in result["indicators"]
+    )
+
+
+
+
+def test_bec_007_does_not_flag_common_recipient_transition():
+
+    """BEC-007 should not flag a historically common recipient transition."""
+
+    rule = BehavioralCommunicationAnomalyRule()
+
+    context = build_context(
+        date="Mon, 14 Sep 2026 10:00:00 +0000",
+        typical_hours=[10],
+        recipients=[
+            "finance@company.com",
+        ],
+        to_recipients=[
+            "finance@company.com",
+        ],
+        historical_observations=[
+            {
+                "email_sent_at": "2026-09-01T10:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-02T10:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["finance@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-03T10:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-04T10:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["finance@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-05T10:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+        ],
+    )
+
+    result = rule.evaluate(context)
+
+    assert result["current_recipient_transition"] == (
+        ("alice@company.com",),
+        ("finance@company.com",),
+    )
+
+    assert (
+        result["historical_recipient_transition_frequencies"][
+            (
+                ("alice@company.com",),
+                ("finance@company.com",),
+            )
+        ]
+        == 2 / 4
+    )
+
+    assert result["unusual_recipient_transitions"] == []
+
+    assert (
+        "Message follows an unusual recipient communication sequence"
+        not in result["indicators"]
+    )
+
+
+def test_bec_007_requires_minimum_history_for_recipient_transitions():
+
+    """BEC-007 should not calculate recipient transitions with insufficient history."""
+
+    rule = BehavioralCommunicationAnomalyRule()
+
+    context = build_context(
+        date="Mon, 14 Sep 2026 10:00:00 +0000",
+        typical_hours=[10],
+        recipients=[
+            "finance@company.com",
+        ],
+        to_recipients=[
+            "finance@company.com",
+        ],
+        historical_observations=[
+            {
+                "email_sent_at": "2026-09-01T10:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-02T10:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["finance@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+        ],
+    )
+
+    result = rule.evaluate(context)
+
+    assert result["historical_recipient_transition_frequencies"] == {}
+    assert result["current_recipient_transition"] is None
+    assert result["unusual_recipient_transitions"] == []
+
+
+
+
+def test_bec_007_recipient_transition_is_independent_of_recipient_order():
+
+    """BEC-007 should normalize recipient-group ordering before sequence analysis."""
+
+    rule = BehavioralCommunicationAnomalyRule()
+
+    context = build_context(
+        date="Mon, 14 Sep 2026 10:00:00 +0000",
+        typical_hours=[10],
+        recipients=[
+            "finance@company.com",
+            "alice@company.com",
+        ],
+        to_recipients=[
+            "finance@company.com",
+            "alice@company.com",
+        ],
+        historical_observations=[
+            {
+                "email_sent_at": "2026-09-01T10:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-02T10:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["hr@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-03T10:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+        ],
+    )
+
+    result = rule.evaluate(context)
+
+    assert result["current_recipient_transition"] == (
+        (
+            ("alice@company.com",),
+            (
+                "alice@company.com",
+                "finance@company.com",
+            ),
+        )
+    )
+
+    assert (
+        (
+            (
+                "alice@company.com",
+            ),
+            (
+                "alice@company.com",
+                "finance@company.com",
+            ),
+        )
+        in result["unusual_recipient_transitions"]
+    )
+
+
+def test_bec_007_recipient_transition_ignores_duplicate_recipients():
+
+    """BEC-007 should remove duplicate recipients before sequence analysis."""
+
+    rule = BehavioralCommunicationAnomalyRule()
+
+    context = build_context(
+        date="Mon, 14 Sep 2026 10:00:00 +0000",
+        typical_hours=[10],
+        recipients=[
+            "alice@company.com",
+            "alice@company.com",
+            "finance@company.com",
+        ],
+        to_recipients=[
+            "alice@company.com",
+            "alice@company.com",
+            "finance@company.com",
+        ],
+        historical_observations=[
+            {
+                "email_sent_at": "2026-09-01T10:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["hr@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-02T10:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-03T10:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["hr@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+        ],
+    )
+
+    result = rule.evaluate(context)
+
+    assert result["current_recipient_transition"] == (
+        (
+            ("hr@company.com",),
+            (
+                "alice@company.com",
+                "finance@company.com",
+            ),
+        )
+    )
+
+    assert (
+        (
+            (
+                "hr@company.com",
+            ),
+            (
+                "alice@company.com",
+                "finance@company.com",
+            ),
+        )
+        in result["unusual_recipient_transitions"]
+    )
+
+
+def test_bec_007_invalid_recipient_observation_breaks_transition_sequence():
+
+    """BEC-007 should not connect recipient groups across an invalid observation."""
+
+    rule = BehavioralCommunicationAnomalyRule()
+
+    context = build_context(
+        date="Mon, 14 Sep 2026 10:00:00 +0000",
+        typical_hours=[10],
+        recipients=[
+            "finance@company.com",
+        ],
+        to_recipients=[
+            "finance@company.com",
+        ],
+        historical_observations=[
+            {
+                "email_sent_at": "2026-09-01T10:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-02T10:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": [],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-03T10:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["finance@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-04T10:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+        ],
+    )
+
+    result = rule.evaluate(context)
+
+    assert (
+        (
+            ("alice@company.com",),
+            ("finance@company.com",),
+        )
+        not in result["historical_recipient_transition_frequencies"]
+    )
+
+    assert (
+        (
+            ("finance@company.com",),
+            ("alice@company.com",),
+        )
+        in result["historical_recipient_transition_frequencies"]
+    )

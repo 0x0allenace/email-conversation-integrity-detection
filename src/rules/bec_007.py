@@ -26,6 +26,7 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
     RECIPIENT_COOCCURRENCE_THRESHOLD = 0.10
     RECIPIENT_ROLE_THRESHOLD = 0.10
     INDIVIDUAL_RECIPIENT_ROLE_THRESHOLD = 0.10
+    RECIPIENT_TRANSITION_THRESHOLD = 0.10
 
     def evaluate(
         self,
@@ -144,6 +145,26 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
             )
         )
 
+        historical_recipient_transition_frequencies = (
+            self._build_historical_recipient_transition_frequencies(
+                context.historical_observations
+            )
+        )
+
+        current_recipient_transition = (
+            self._calculate_current_recipient_transition(
+                context.historical_observations,
+                context.recipients,
+            )
+        )
+
+        unusual_recipient_transitions = (
+            self._find_unusual_recipient_transitions(
+                historical_recipient_transition_frequencies,
+                current_recipient_transition,
+            )
+        )
+
         historical_timestamps = (
             self._extract_historical_timestamps(
                 context.historical_observations
@@ -203,6 +224,11 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
                     "Message contains a historically unusual recipient group"
                 )
 
+            if unusual_recipient_transitions:
+                indicators.append(
+                    "Message follows an unusual recipient communication sequence"
+                )
+
             return self._build_result(
                 matched=bool(indicators),
                 indicators=indicators,
@@ -243,6 +269,15 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
                 ),
                 unusual_recipient_groups=(
                     unusual_recipient_groups
+                ),
+                historical_recipient_transition_frequencies=(
+                    historical_recipient_transition_frequencies
+                ),
+                current_recipient_transition=(
+                    current_recipient_transition
+                ),
+                unusual_recipient_transitions=(
+                    unusual_recipient_transitions
                 ),
                 historical_recipient_interval_statistics=(
                     historical_recipient_interval_statistics
@@ -318,6 +353,11 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
         if unusual_recipient_groups:
             indicators.append(
                 "Message contains a historically unusual recipient group"
+            )
+
+        if unusual_recipient_transitions:
+            indicators.append(
+                "Message follows an unusual recipient communication sequence"
             )
 
         current_recipient_intervals = (
@@ -399,6 +439,15 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
             ),
             unusual_recipient_groups=(
                 unusual_recipient_groups
+            ),
+            historical_recipient_transition_frequencies=(
+                historical_recipient_transition_frequencies
+            ),
+            current_recipient_transition=(
+                current_recipient_transition
+            ),
+            unusual_recipient_transitions=(
+                unusual_recipient_transitions
             ),
             historical_recipient_interval_statistics=(
                 historical_recipient_interval_statistics
@@ -670,6 +719,187 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
             recipient_group: count / valid_observations
             for recipient_group, count in sorted(
                 recipient_group_counts.items()
+            )
+        }
+
+    @classmethod
+    def _find_unusual_recipient_transitions(
+        cls,
+        historical_transition_frequencies: dict[
+            tuple[tuple[str, ...], tuple[str, ...]],
+            float,
+        ],
+        current_transition: tuple[
+            tuple[str, ...],
+            tuple[str, ...],
+        ] | None,
+    ) -> list[tuple[tuple[str, ...], tuple[str, ...]]]:
+        """Identify current recipient transitions that are historically unusual."""
+
+        if current_transition is None:
+            return []
+
+        frequency = historical_transition_frequencies.get(
+            current_transition,
+            0.0,
+        )
+
+        if frequency <= cls.RECIPIENT_TRANSITION_THRESHOLD:
+            return [current_transition]
+
+        return []
+
+    @classmethod
+    def _calculate_current_recipient_transition(
+        cls,
+        observations: list[dict[str, Any]],
+        current_recipients: list[str],
+    ) -> tuple[tuple[str, ...], tuple[str, ...]] | None:
+        """Return the latest historical recipient group to current group transition."""
+
+        if len(observations) < cls.MIN_HISTORICAL_OBSERVATIONS:
+            return None
+
+        current_group = tuple(
+            sorted(
+                cls._normalize_recipients(
+                    current_recipients
+                )
+            )
+        )
+
+        if not current_group:
+            return None
+
+        historical_groups: list[tuple[str, ...]] = []
+
+        for observation in observations:
+            if not isinstance(observation, dict):
+                continue
+
+            result = observation.get("result")
+
+            if not isinstance(result, dict):
+                continue
+
+            email = result.get("email")
+
+            if not isinstance(email, dict):
+                continue
+
+            recipients = (
+                cls._normalize_recipients(
+                    email.get("to", [])
+                )
+                + cls._normalize_recipients(
+                    email.get("cc", [])
+                )
+            )
+
+            recipients = cls._normalize_recipients(
+                recipients
+            )
+
+            if not recipients:
+                continue
+
+            historical_groups.append(
+                tuple(sorted(recipients))
+            )
+
+        if not historical_groups:
+            return None
+
+        return (
+            historical_groups[-1],
+            current_group,
+        )
+
+    @classmethod
+    def _build_historical_recipient_transition_frequencies(
+        cls,
+        observations: list[dict[str, Any]],
+    ) -> dict[
+        tuple[tuple[str, ...], tuple[str, ...]],
+        float,
+    ]:
+        """Build historical frequencies for adjacent recipient-group transitions."""
+
+        if len(observations) < cls.MIN_HISTORICAL_OBSERVATIONS:
+            return {}
+
+        transition_counts: dict[
+            tuple[tuple[str, ...], tuple[str, ...]],
+            int,
+        ] = {}
+
+        previous_group: tuple[str, ...] | None = None
+
+        for observation in observations:
+            if not isinstance(observation, dict):
+                previous_group = None
+                continue
+
+            result = observation.get("result")
+
+            if not isinstance(result, dict):
+                previous_group = None
+                continue
+
+            email = result.get("email")
+
+            if not isinstance(email, dict):
+                previous_group = None
+                continue
+
+            recipients = (
+                cls._normalize_recipients(
+                    email.get("to", [])
+                )
+                + cls._normalize_recipients(
+                    email.get("cc", [])
+                )
+            )
+
+            recipients = cls._normalize_recipients(
+                recipients
+            )
+
+            if not recipients:
+                previous_group = None
+                continue
+
+            current_group = tuple(
+                sorted(recipients)
+            )
+
+            if previous_group is not None:
+                transition = (
+                    previous_group,
+                    current_group,
+                )
+
+                transition_counts[transition] = (
+                    transition_counts.get(
+                        transition,
+                        0,
+                    )
+                    + 1
+                )
+
+            previous_group = current_group
+
+        valid_transitions = sum(
+            transition_counts.values()
+        )
+
+        if not valid_transitions:
+            return {}
+
+        return {
+            transition: count / valid_transitions
+            for transition, count in sorted(
+                transition_counts.items()
             )
         }
 
@@ -1719,6 +1949,17 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
         unusual_recipient_groups: list[
             tuple[str, ...]
         ],
+        historical_recipient_transition_frequencies: dict[
+            tuple[tuple[str, ...], tuple[str, ...]],
+            float,
+        ],
+        current_recipient_transition: tuple[
+            tuple[str, ...],
+            tuple[str, ...],
+        ] | None,
+        unusual_recipient_transitions: list[
+            tuple[tuple[str, ...], tuple[str, ...]]
+        ],
         historical_recipient_interval_statistics: dict[
             str,
             dict[str, float | int],
@@ -1774,6 +2015,15 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
             ),
             "unusual_recipient_groups": (
                 unusual_recipient_groups
+            ),
+            "historical_recipient_transition_frequencies": (
+                historical_recipient_transition_frequencies
+            ),
+            "current_recipient_transition": (
+                current_recipient_transition
+            ),
+            "unusual_recipient_transitions": (
+                unusual_recipient_transitions
             ),
             "historical_recipient_interval_statistics": (
                 historical_recipient_interval_statistics
