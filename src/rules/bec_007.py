@@ -21,6 +21,7 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
     MIN_HISTORICAL_OBSERVATIONS = 3
     MIN_FREQUENCY_INTERVAL_MINUTES = 1
     FREQUENCY_ANOMALY_RATIO = 0.25
+    RECIPIENT_RECENCY_ANOMALY_RATIO = 4.0
     RECIPIENT_FREQUENCY_THRESHOLD = 0.10
     RECIPIENT_COOCCURRENCE_THRESHOLD = 0.10
     RECIPIENT_ROLE_THRESHOLD = 0.10
@@ -155,6 +156,18 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
             )
         )
 
+        historical_recipient_timestamps = (
+            self._build_historical_recipient_timestamps(
+                context.historical_observations
+            )
+        )
+
+        historical_recipient_interval_statistics = (
+            self._build_historical_recipient_interval_statistics(
+                historical_recipient_timestamps
+            )
+        )
+
         indicators: list[str] = []
 
         parsed_date = self._parse_date(email_date)
@@ -231,6 +244,10 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
                 unusual_recipient_groups=(
                     unusual_recipient_groups
                 ),
+                historical_recipient_interval_statistics=(
+                    historical_recipient_interval_statistics
+                ),
+                unusual_recipient_recency=[],
                 historical_frequency_interval=(
                     historical_frequency_interval
                 ),
@@ -303,6 +320,28 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
                 "Message contains a historically unusual recipient group"
             )
 
+        current_recipient_intervals = (
+            self._calculate_current_recipient_intervals(
+                parsed_date,
+                historical_recipient_timestamps,
+                context.recipients,
+            )
+        )
+
+        unusual_recipient_recency = (
+            self._find_unusual_recipient_recency(
+                context.recipients,
+                historical_recipients,
+                historical_recipient_interval_statistics,
+                current_recipient_intervals,
+            )
+        )
+
+        if unusual_recipient_recency:
+            indicators.append(
+                "Message sent after an unusually long recipient communication gap"
+            )
+
         current_frequency_interval = (
             self._calculate_current_frequency_interval(
                 parsed_date,
@@ -360,6 +399,12 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
             ),
             unusual_recipient_groups=(
                 unusual_recipient_groups
+            ),
+            historical_recipient_interval_statistics=(
+                historical_recipient_interval_statistics
+            ),
+            unusual_recipient_recency=(
+                unusual_recipient_recency
             ),
             historical_frequency_interval=(
                 historical_frequency_interval
@@ -1254,6 +1299,219 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
         )
 
     @classmethod
+    def _build_historical_recipient_timestamps(
+        cls,
+        observations: list[dict[str, Any]],
+    ) -> dict[str, list[datetime]]:
+        """Build recipient-specific historical email timestamps."""
+
+        recipient_timestamps: dict[str, list[datetime]] = {}
+
+        for observation in observations:
+            if not isinstance(observation, dict):
+                continue
+
+            email_sent_at = observation.get(
+                "email_sent_at"
+            )
+
+            if isinstance(email_sent_at, datetime):
+                parsed_timestamp = email_sent_at
+            elif isinstance(email_sent_at, str):
+                parsed_timestamp = cls._parse_historical_timestamp(
+                    email_sent_at
+                )
+            else:
+                parsed_timestamp = None
+
+            if parsed_timestamp is None:
+                continue
+
+            result = observation.get("result")
+
+            if not isinstance(result, dict):
+                continue
+
+            email = result.get("email")
+
+            if not isinstance(email, dict):
+                continue
+
+            recipients = (
+                cls._normalize_recipients(
+                    email.get("to", [])
+                )
+                + cls._normalize_recipients(
+                    email.get("cc", [])
+                )
+            )
+
+            for recipient in dict.fromkeys(recipients):
+                recipient_timestamps.setdefault(
+                    recipient,
+                    [],
+                ).append(parsed_timestamp)
+
+        for recipient in recipient_timestamps:
+            recipient_timestamps[recipient].sort()
+
+        return recipient_timestamps
+
+    @classmethod
+    def _build_historical_recipient_interval_statistics(
+        cls,
+        recipient_timestamps: dict[str, list[datetime]],
+    ) -> dict[str, dict[str, float | int]]:
+        """Build recipient-specific median communication intervals."""
+
+        statistics: dict[str, dict[str, float | int]] = {}
+
+        for recipient, timestamps in recipient_timestamps.items():
+            if len(timestamps) < cls.MIN_HISTORICAL_OBSERVATIONS:
+                continue
+
+            intervals: list[float] = []
+
+            for previous, current in zip(
+                timestamps,
+                timestamps[1:],
+            ):
+                interval_minutes = (
+                    current - previous
+                ).total_seconds() / 60
+
+                if (
+                    interval_minutes
+                    >= cls.MIN_FREQUENCY_INTERVAL_MINUTES
+                ):
+                    intervals.append(
+                        interval_minutes
+                    )
+
+            if len(intervals) < 2:
+                continue
+
+            statistics[recipient] = {
+                "median_interval_minutes": float(
+                    median(intervals)
+                ),
+                "interval_count": len(intervals),
+            }
+
+        return statistics
+
+    @classmethod
+    def _calculate_current_recipient_intervals(
+        cls,
+        parsed_date: datetime,
+        recipient_timestamps: dict[str, list[datetime]],
+        current_recipients: list[str],
+    ) -> dict[str, float]:
+        """Calculate current communication gaps for known recipients."""
+
+        current_intervals: dict[str, float] = {}
+
+        for recipient in cls._normalize_recipients(
+            current_recipients
+        ):
+            timestamps = recipient_timestamps.get(
+                recipient,
+                [],
+            )
+
+            if not timestamps:
+                continue
+
+            previous_timestamp = timestamps[-1]
+            comparison_date = parsed_date
+
+            if (
+                comparison_date.tzinfo is not None
+                and previous_timestamp.tzinfo is None
+            ):
+                previous_timestamp = previous_timestamp.replace(
+                    tzinfo=comparison_date.tzinfo
+                )
+
+            elif (
+                comparison_date.tzinfo is None
+                and previous_timestamp.tzinfo is not None
+            ):
+                comparison_date = comparison_date.replace(
+                    tzinfo=previous_timestamp.tzinfo
+                )
+
+            interval_minutes = (
+                comparison_date - previous_timestamp
+            ).total_seconds() / 60
+
+            if (
+                interval_minutes
+                < cls.MIN_FREQUENCY_INTERVAL_MINUTES
+            ):
+                continue
+
+            current_intervals[recipient] = interval_minutes
+
+        return current_intervals
+
+    @classmethod
+    def _find_unusual_recipient_recency(
+        cls,
+        current_recipients: list[str],
+        historical_recipients: set[str],
+        historical_interval_statistics: dict[
+            str,
+            dict[str, float | int],
+        ],
+        current_recipient_intervals: dict[str, float],
+    ) -> list[str]:
+        """Find known recipients returning after an unusually long gap."""
+
+        unusual_recipients: list[str] = []
+
+        for recipient in cls._normalize_recipients(
+            current_recipients
+        ):
+            if recipient not in historical_recipients:
+                continue
+
+            statistics = historical_interval_statistics.get(
+                recipient
+            )
+
+            if not statistics:
+                continue
+
+            historical_interval = statistics.get(
+                "median_interval_minutes"
+            )
+
+            current_interval = current_recipient_intervals.get(
+                recipient
+            )
+
+            if not isinstance(historical_interval, (int, float)):
+                continue
+
+            if not isinstance(current_interval, (int, float)):
+                continue
+
+            if historical_interval <= 0:
+                continue
+
+            if (
+                current_interval
+                >= historical_interval
+                * cls.RECIPIENT_RECENCY_ANOMALY_RATIO
+            ):
+                unusual_recipients.append(
+                    recipient
+                )
+
+        return unusual_recipients
+
+    @classmethod
     def _build_historical_frequency_interval(
         cls,
         timestamps: list[datetime],
@@ -1461,6 +1719,11 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
         unusual_recipient_groups: list[
             tuple[str, ...]
         ],
+        historical_recipient_interval_statistics: dict[
+            str,
+            dict[str, float | int],
+        ],
+        unusual_recipient_recency: list[str],
         historical_frequency_interval: float | None,
         current_frequency_interval: float | None,
     ) -> dict[str, Any]:
@@ -1511,6 +1774,12 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
             ),
             "unusual_recipient_groups": (
                 unusual_recipient_groups
+            ),
+            "historical_recipient_interval_statistics": (
+                historical_recipient_interval_statistics
+            ),
+            "unusual_recipient_recency": (
+                unusual_recipient_recency
             ),
             "historical_frequency_interval": (
                 historical_frequency_interval

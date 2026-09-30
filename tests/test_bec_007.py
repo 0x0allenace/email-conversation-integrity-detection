@@ -2362,3 +2362,330 @@ def test_bec_007_requires_minimum_historical_observations_for_individual_recipie
 
     assert result["historical_recipient_role_frequencies"] == {}
     assert result["unusual_recipient_roles"] == []
+def test_bec_007_calculates_recipient_specific_interval_statistics():
+    """BEC-007 should calculate communication intervals separately for each recipient."""
+
+    rule = BehavioralCommunicationAnomalyRule()
+
+    context = build_context(
+        date="Mon, 28 Sep 2026 10:00:00 +0000",
+        typical_hours=[10],
+        recipients=["alice@company.com", "bob@company.com"],
+        historical_observations=[
+            {
+                "email_sent_at": "2026-09-01T10:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-03T10:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-05T10:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-07T10:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-01T10:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["bob@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-10T10:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["bob@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-19T10:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["bob@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+        ],
+    )
+
+    result = rule.evaluate(context)
+
+    assert result["historical_recipient_interval_statistics"] == {
+        "alice@company.com": {
+            "median_interval_minutes": 2880.0,
+            "interval_count": 3,
+        },
+        "bob@company.com": {
+            "median_interval_minutes": 12960.0,
+            "interval_count": 2,
+        },
+    }
+
+
+def test_bec_007_detects_unusually_long_recipient_recency():
+    """BEC-007 should detect an unusually long gap for a known recipient."""
+
+    rule = BehavioralCommunicationAnomalyRule()
+
+    context = build_context(
+        date="Mon, 28 Sep 2026 10:00:00 +0000",
+        typical_hours=[10],
+        recipients=["alice@company.com"],
+        historical_observations=[
+            {
+                "email_sent_at": "2026-09-01T10:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-03T10:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-05T10:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-07T10:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+        ],
+    )
+
+    result = rule.evaluate(context)
+
+    assert result["matched"] is True
+    assert (
+        "Message sent after an unusually long recipient communication gap"
+        in result["indicators"]
+    )
+    assert result["unusual_recipient_recency"] == ["alice@company.com"]
+
+
+def test_bec_007_allows_normal_recipient_recency():
+    """BEC-007 should allow a recipient gap near the historical baseline."""
+
+    rule = BehavioralCommunicationAnomalyRule()
+
+    context = build_context(
+        date="Wed, 09 Sep 2026 10:00:00 +0000",
+        typical_hours=[10],
+        recipients=["alice@company.com"],
+        historical_observations=[
+            {
+                "email_sent_at": "2026-09-01T10:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-03T10:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-05T10:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-07T10:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+        ],
+    )
+
+    result = rule.evaluate(context)
+
+    assert result["matched"] is False
+    assert result["unusual_recipient_recency"] == []
+    assert result["indicators"] == []
+
+
+def test_bec_007_requires_minimum_historical_observations_for_recipient_recency():
+    """BEC-007 should require enough recipient history before calculating recency."""
+
+    rule = BehavioralCommunicationAnomalyRule()
+
+    context = build_context(
+        date="Mon, 28 Sep 2026 10:00:00 +0000",
+        typical_hours=[10],
+        recipients=["alice@company.com"],
+        historical_observations=[
+            {
+                "email_sent_at": "2026-09-01T10:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-03T10:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+        ],
+    )
+
+    result = rule.evaluate(context)
+
+    assert result["matched"] is False
+    assert result["unusual_recipient_recency"] == []
+    assert result["historical_recipient_interval_statistics"] == {}
+
+
+def test_bec_007_ignores_other_recipient_messages_when_calculating_recency():
+    """BEC-007 should calculate Alice's recency independently of Bob's activity."""
+
+    rule = BehavioralCommunicationAnomalyRule()
+
+    context = build_context(
+        date="Tue, 15 Sep 2026 10:00:00 +0000",
+        typical_hours=[10],
+        recipients=["alice@company.com"],
+        historical_observations=[
+            {
+                "email_sent_at": "2026-09-01T10:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-02T10:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["bob@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-03T10:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["bob@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-04T10:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["bob@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-05T10:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["bob@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-03T10:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-06T10:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+        ],
+    )
+
+    result = rule.evaluate(context)
+
+    assert result["historical_recipient_interval_statistics"]["alice@company.com"] == {
+        "median_interval_minutes": 3600.0,
+        "interval_count": 2,
+    }
+
+    assert result["matched"] is False
