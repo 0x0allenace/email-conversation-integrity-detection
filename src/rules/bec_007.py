@@ -116,6 +116,19 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
             )
         )
 
+        historical_recipient_group_frequencies = (
+            self._build_historical_recipient_group_frequencies(
+                context.historical_observations
+            )
+        )
+
+        unusual_recipient_groups = (
+            self._find_unusual_recipient_groups(
+                context.recipients,
+                historical_recipient_group_frequencies,
+            )
+        )
+
         historical_timestamps = (
             self._extract_historical_timestamps(
                 context.historical_observations
@@ -153,6 +166,11 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
                     "Message contains a historically unusual recipient role relationship"
                 )
 
+            if unusual_recipient_groups:
+                indicators.append(
+                    "Message contains a historically unusual recipient group"
+                )
+
             return self._build_result(
                 matched=bool(indicators),
                 indicators=indicators,
@@ -181,6 +199,12 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
                 ),
                 unusual_recipient_role_pairs=(
                     unusual_recipient_role_pairs
+                ),
+                historical_recipient_group_frequencies=(
+                    historical_recipient_group_frequencies
+                ),
+                unusual_recipient_groups=(
+                    unusual_recipient_groups
                 ),
                 historical_frequency_interval=(
                     historical_frequency_interval
@@ -244,6 +268,11 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
                 "Message contains a historically unusual recipient role relationship"
             )
 
+        if unusual_recipient_groups:
+            indicators.append(
+                "Message contains a historically unusual recipient group"
+            )
+
         current_frequency_interval = (
             self._calculate_current_frequency_interval(
                 parsed_date,
@@ -289,6 +318,12 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
             ),
             unusual_recipient_role_pairs=(
                 unusual_recipient_role_pairs
+            ),
+            historical_recipient_group_frequencies=(
+                historical_recipient_group_frequencies
+            ),
+            unusual_recipient_groups=(
+                unusual_recipient_groups
             ),
             historical_frequency_interval=(
                 historical_frequency_interval
@@ -483,6 +518,109 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
             recipient: count / valid_observations
             for recipient, count in recipient_counts.items()
         }
+
+    @classmethod
+    def _build_historical_recipient_group_frequencies(
+        cls,
+        observations: list[dict[str, Any]],
+    ) -> dict[tuple[str, ...], float]:
+        """Build historical frequencies for complete recipient groups."""
+
+        if len(observations) < cls.MIN_HISTORICAL_OBSERVATIONS:
+            return {}
+
+        recipient_group_counts: dict[
+            tuple[str, ...],
+            int,
+        ] = {}
+
+        valid_observations = 0
+
+        for observation in observations:
+            if not isinstance(observation, dict):
+                continue
+
+            result = observation.get("result")
+
+            if not isinstance(result, dict):
+                continue
+
+            email = result.get("email")
+
+            if not isinstance(email, dict):
+                continue
+
+            recipients = (
+                cls._normalize_recipients(
+                    email.get("to", [])
+                )
+                + cls._normalize_recipients(
+                    email.get("cc", [])
+                )
+            )
+
+            recipients = cls._normalize_recipients(
+                recipients
+            )
+
+            if not recipients:
+                continue
+
+            valid_observations += 1
+
+            recipient_group = tuple(
+                sorted(recipients)
+            )
+
+            recipient_group_counts[
+                recipient_group
+            ] = (
+                recipient_group_counts.get(
+                    recipient_group,
+                    0,
+                )
+                + 1
+            )
+
+        if valid_observations < cls.MIN_HISTORICAL_OBSERVATIONS:
+            return {}
+
+        return {
+            recipient_group: count / valid_observations
+            for recipient_group, count in sorted(
+                recipient_group_counts.items()
+            )
+        }
+
+    @classmethod
+    def _find_unusual_recipient_groups(
+        cls,
+        current_recipients: list[str],
+        historical_group_frequencies: dict[
+            tuple[str, ...],
+            float,
+        ],
+    ) -> list[tuple[str, ...]]:
+        """Find current complete recipient groups absent from history."""
+
+        if not historical_group_frequencies:
+            return []
+
+        normalized_current_recipients = cls._normalize_recipients(
+            current_recipients
+        )
+
+        if not normalized_current_recipients:
+            return []
+
+        current_group = tuple(
+            sorted(normalized_current_recipients)
+        )
+
+        if current_group not in historical_group_frequencies:
+            return [current_group]
+
+        return []
 
     @classmethod
     def _build_historical_recipient_cooccurrences(
@@ -1132,6 +1270,13 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
         unusual_recipient_role_pairs: list[
             tuple[str, str, str, str]
         ],
+        historical_recipient_group_frequencies: dict[
+            tuple[str, ...],
+            float,
+        ],
+        unusual_recipient_groups: list[
+            tuple[str, ...]
+        ],
         historical_frequency_interval: float | None,
         current_frequency_interval: float | None,
     ) -> dict[str, Any]:
@@ -1170,6 +1315,12 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
             ),
             "unusual_recipient_role_pairs": (
                 unusual_recipient_role_pairs
+            ),
+            "historical_recipient_group_frequencies": (
+                historical_recipient_group_frequencies
+            ),
+            "unusual_recipient_groups": (
+                unusual_recipient_groups
             ),
             "historical_frequency_interval": (
                 historical_frequency_interval

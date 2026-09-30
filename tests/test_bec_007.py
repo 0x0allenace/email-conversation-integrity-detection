@@ -1724,3 +1724,368 @@ def test_bec_007_calculates_recipient_role_frequency_within_established_pair():
         ]
         == 0.2
     )
+
+
+def test_bec_007_calculates_historical_recipient_group_frequency():
+    """BEC-007 should calculate frequency for complete recipient groups."""
+
+    rule = BehavioralCommunicationAnomalyRule()
+
+    context = build_context(
+        date="Fri, 18 Sep 2026 10:00:00 +0100",
+        typical_hours=[10],
+        recipients=[
+            "alice@company.com",
+            "finance@company.com",
+        ],
+        to_recipients=[
+            "alice@company.com",
+        ],
+        cc_recipients=[
+            "finance@company.com",
+        ],
+        historical_observations=[
+            {
+                "email_sent_at": "2026-09-01T09:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": [
+                            "alice@company.com",
+                        ],
+                        "cc": [
+                            "finance@company.com",
+                        ],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-02T09:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": [
+                            "alice@company.com",
+                        ],
+                        "cc": [
+                            "finance@company.com",
+                        ],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-03T09:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": [
+                            "alice@company.com",
+                        ],
+                        "cc": [
+                            "finance@company.com",
+                        ],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-04T09:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": [
+                            "alice@company.com",
+                        ],
+                        "cc": [
+                            "finance@company.com",
+                        ],
+                    },
+                },
+            },
+        ],
+    )
+
+    result = rule.evaluate(context)
+
+    assert (
+        result["historical_recipient_group_frequencies"][
+            (
+                "alice@company.com",
+                "finance@company.com",
+            )
+        ]
+        == 1.0
+    )
+
+
+def test_bec_007_detects_unusual_recipient_group():
+    """BEC-007 should identify a recipient group not seen historically."""
+
+    rule = BehavioralCommunicationAnomalyRule()
+
+    context = build_context(
+        date="Fri, 18 Sep 2026 10:00:00 +0100",
+        typical_hours=[10],
+        recipients=[
+            "alice@company.com",
+            "finance@company.com",
+            "ceo@company.com",
+        ],
+        to_recipients=[
+            "alice@company.com",
+            "ceo@company.com",
+        ],
+        cc_recipients=[
+            "finance@company.com",
+        ],
+        historical_observations=[
+            {
+                "email_sent_at": "2026-09-01T09:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": [
+                            "alice@company.com",
+                        ],
+                        "cc": [
+                            "finance@company.com",
+                        ],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-02T09:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": [
+                            "alice@company.com",
+                        ],
+                        "cc": [
+                            "finance@company.com",
+                        ],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-03T09:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": [
+                            "alice@company.com",
+                        ],
+                        "cc": [
+                            "finance@company.com",
+                        ],
+                    },
+                },
+            },
+        ],
+    )
+
+    result = rule.evaluate(context)
+
+    assert (
+        (
+            "alice@company.com",
+            "ceo@company.com",
+            "finance@company.com",
+        )
+        in result["unusual_recipient_groups"]
+    )
+
+
+def test_bec_007_recipient_group_is_order_independent():
+    """BEC-007 should treat recipient ordering as irrelevant."""
+
+    rule = BehavioralCommunicationAnomalyRule()
+
+    context = build_context(
+        date="Fri, 18 Sep 2026 10:00:00 +0100",
+        typical_hours=[10],
+        recipients=[
+            "finance@company.com",
+            "alice@company.com",
+        ],
+        to_recipients=[
+            "finance@company.com",
+        ],
+        cc_recipients=[
+            "alice@company.com",
+        ],
+        historical_observations=[
+            {
+                "email_sent_at": "2026-09-01T09:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": [
+                            "alice@company.com",
+                        ],
+                        "cc": [
+                            "finance@company.com",
+                        ],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-02T09:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": [
+                            "finance@company.com",
+                        ],
+                        "cc": [
+                            "alice@company.com",
+                        ],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-03T09:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": [
+                            "alice@company.com",
+                        ],
+                        "cc": [
+                            "finance@company.com",
+                        ],
+                    },
+                },
+            },
+        ],
+    )
+
+    result = rule.evaluate(context)
+
+    assert (
+        result["historical_recipient_group_frequencies"][
+            (
+                "alice@company.com",
+                "finance@company.com",
+            )
+        ]
+        == 1.0
+    )
+
+
+def test_bec_007_recipient_group_ignores_duplicate_recipients():
+    """BEC-007 should not count duplicate recipients as separate group members."""
+
+    rule = BehavioralCommunicationAnomalyRule()
+
+    context = build_context(
+        date="Fri, 18 Sep 2026 10:00:00 +0100",
+        typical_hours=[10],
+        recipients=[
+            "alice@company.com",
+            "finance@company.com",
+        ],
+        to_recipients=[
+            "alice@company.com",
+            "alice@company.com",
+        ],
+        cc_recipients=[
+            "finance@company.com",
+        ],
+        historical_observations=[
+            {
+                "email_sent_at": "2026-09-01T09:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": [
+                            "alice@company.com",
+                        ],
+                        "cc": [
+                            "finance@company.com",
+                        ],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-02T09:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": [
+                            "alice@company.com",
+                        ],
+                        "cc": [
+                            "finance@company.com",
+                        ],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-03T09:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": [
+                            "alice@company.com",
+                        ],
+                        "cc": [
+                            "finance@company.com",
+                        ],
+                    },
+                },
+            },
+        ],
+    )
+
+    result = rule.evaluate(context)
+
+    assert (
+        result["historical_recipient_group_frequencies"][
+            (
+                "alice@company.com",
+                "finance@company.com",
+            )
+        ]
+        == 1.0
+    )
+
+
+def test_bec_007_requires_minimum_historical_observations_for_recipient_groups():
+    """BEC-007 should require minimum history before building recipient groups."""
+
+    rule = BehavioralCommunicationAnomalyRule()
+
+    context = build_context(
+        date="Fri, 18 Sep 2026 10:00:00 +0100",
+        typical_hours=[10],
+        recipients=[
+            "alice@company.com",
+            "finance@company.com",
+        ],
+        to_recipients=[
+            "alice@company.com",
+        ],
+        cc_recipients=[
+            "finance@company.com",
+        ],
+        historical_observations=[
+            {
+                "email_sent_at": "2026-09-01T09:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": [
+                            "alice@company.com",
+                        ],
+                        "cc": [
+                            "finance@company.com",
+                        ],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-02T09:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": [
+                            "alice@company.com",
+                        ],
+                        "cc": [
+                            "finance@company.com",
+                        ],
+                    },
+                },
+            },
+        ],
+    )
+
+    result = rule.evaluate(context)
+
+    assert result["historical_recipient_group_frequencies"] == {}
+    assert result["unusual_recipient_groups"] == []
