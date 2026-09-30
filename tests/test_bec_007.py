@@ -85,6 +85,62 @@ def build_context(
     )
 
 
+def test_bec_007_builds_behavioral_feature_vector():
+    """BEC-007 should expose normalized behavioral anomaly features."""
+
+    context = build_context(
+        date="2026-01-05T10:00:00+00:00",
+        typical_hours=[10],
+        recipients=["alice@company.com"],
+        historical_observations=[
+            {
+                "result": {
+                    "email": {
+                        "date": "2026-01-01T10:00:00+00:00",
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    }
+                }
+            },
+            {
+                "result": {
+                    "email": {
+                        "date": "2026-01-02T10:00:00+00:00",
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    }
+                }
+            },
+            {
+                "result": {
+                    "email": {
+                        "date": "2026-01-03T10:00:00+00:00",
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    }
+                }
+            },
+        ],
+    )
+
+    result = BehavioralCommunicationAnomalyRule().evaluate(context)
+
+    assert result["behavioral_features"] == {
+        "sending_hour_anomaly": 0,
+        "sending_day_anomaly": 0,
+        "timezone_anomaly": 0,
+        "historical_hour_anomaly": 0,
+        "frequency_anomaly": 0,
+        "recipient_novelty": 0,
+        "recipient_frequency_anomaly": 0,
+        "recipient_relationship_anomaly": 0,
+        "recipient_role_anomaly": 0,
+        "recipient_group_anomaly": 0,
+        "recipient_recency_anomaly": 0,
+        "recipient_sequence_anomaly": 0,
+    }
+
+
 def test_bec_007_detects_unusual_sending_hour():
     """BEC-007 should detect a message sent outside normal hours."""
 

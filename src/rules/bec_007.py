@@ -1904,6 +1904,81 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
             and -840 <= value <= 840
         ]
 
+    @staticmethod
+    def _build_behavioral_features(
+        *,
+        observed_hour: int | None,
+        typical_hours: list[int],
+        observed_weekday: int | None,
+        typical_days: list[int],
+        observed_timezone_offset: int | None,
+        typical_timezone_offsets: list[int],
+        historical_hour_range: tuple[int, int] | None,
+        unusual_recipients: list[str],
+        infrequent_recipients: list[str],
+        unusual_recipient_pairs: list[tuple[str, str]],
+        unusual_recipient_roles: list[tuple[str, str]],
+        unusual_recipient_role_pairs: list[tuple[str, str, str, str]],
+        unusual_recipient_groups: list[tuple[str, ...]],
+        unusual_recipient_recency: list[str],
+        unusual_recipient_transitions: list[
+            tuple[tuple[str, ...], tuple[str, ...]]
+        ],
+        current_frequency_interval: float | None,
+        historical_frequency_interval: float | None,
+        frequency_anomaly_detected: bool,
+    ) -> dict[str, int]:
+        # Build normalized behavioral anomaly features from existing evidence.
+        sending_hour_anomaly = int(
+            observed_hour is not None
+            and bool(typical_hours)
+            and observed_hour not in typical_hours
+        )
+
+        sending_day_anomaly = int(
+            observed_weekday is not None
+            and bool(typical_days)
+            and observed_weekday not in typical_days
+        )
+
+        timezone_anomaly = int(
+            observed_timezone_offset is not None
+            and bool(typical_timezone_offsets)
+            and observed_timezone_offset not in typical_timezone_offsets
+        )
+
+        historical_hour_anomaly = int(
+            historical_hour_range is not None
+            and observed_hour is not None
+            and not (
+                historical_hour_range[0]
+                <= observed_hour
+                <= historical_hour_range[1]
+            )
+        )
+
+        frequency_anomaly = int(frequency_anomaly_detected)
+
+        return {
+            "sending_hour_anomaly": sending_hour_anomaly,
+            "sending_day_anomaly": sending_day_anomaly,
+            "timezone_anomaly": timezone_anomaly,
+            "historical_hour_anomaly": historical_hour_anomaly,
+            "frequency_anomaly": frequency_anomaly,
+            "recipient_novelty": int(bool(unusual_recipients)),
+            "recipient_frequency_anomaly": int(bool(infrequent_recipients)),
+            "recipient_relationship_anomaly": int(bool(unusual_recipient_pairs)),
+            "recipient_role_anomaly": int(
+                bool(
+                    unusual_recipient_roles
+                    or unusual_recipient_role_pairs
+                )
+            ),
+            "recipient_group_anomaly": int(bool(unusual_recipient_groups)),
+            "recipient_recency_anomaly": int(bool(unusual_recipient_recency)),
+            "recipient_sequence_anomaly": int(bool(unusual_recipient_transitions)),
+        }
+
     def _build_result(
         self,
         *,
@@ -1970,12 +2045,39 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
     ) -> dict[str, Any]:
         """Build the standardized BEC-007 detection result."""
 
+        frequency_anomaly = self._is_frequency_anomaly(
+            current_frequency_interval,
+            historical_frequency_interval,
+        )
+
+        behavioral_features = self._build_behavioral_features(
+            observed_hour=observed_hour,
+            typical_hours=typical_hours,
+            observed_weekday=observed_weekday,
+            typical_days=typical_days,
+            observed_timezone_offset=observed_timezone_offset,
+            typical_timezone_offsets=typical_timezone_offsets,
+            historical_hour_range=historical_hour_range,
+            unusual_recipients=unusual_recipients,
+            infrequent_recipients=infrequent_recipients,
+            unusual_recipient_pairs=unusual_recipient_pairs,
+            unusual_recipient_roles=unusual_recipient_roles,
+            unusual_recipient_role_pairs=unusual_recipient_role_pairs,
+            unusual_recipient_groups=unusual_recipient_groups,
+            unusual_recipient_recency=unusual_recipient_recency,
+            unusual_recipient_transitions=unusual_recipient_transitions,
+            current_frequency_interval=current_frequency_interval,
+            historical_frequency_interval=historical_frequency_interval,
+            frequency_anomaly_detected=frequency_anomaly,
+        )
+
         return {
             "rule_id": self.rule_id,
             "rule_name": self.rule_name,
             "severity": self.severity,
             "matched": matched,
             "indicators": indicators,
+            "behavioral_features": behavioral_features,
             "observed_hour": observed_hour,
             "typical_hours": typical_hours,
             "observed_weekday": observed_weekday,
