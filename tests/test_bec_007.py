@@ -183,6 +183,9 @@ def test_bec_007_exposes_behavioral_deviation_metrics():
 
     assert result["behavioral_metrics"] == {
         "frequency_interval_ratio": 2.0,
+        "recipient_historical_frequencies": {
+            "alice@company.com": 1.0,
+        },
         "recipient_recency_ratios": {
             "alice@company.com": 2.0,
         },

@@ -1911,6 +1911,7 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
     @staticmethod
     def _build_behavioral_metrics(
         *,
+        historical_recipient_frequencies: dict[str, float],
         historical_recipient_interval_statistics: dict[
             str,
             dict[str, float | int],
@@ -1923,6 +1924,9 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
 
         metrics: dict[str, Any] = {
             "frequency_interval_ratio": None,
+            "recipient_historical_frequencies": (
+                dict(historical_recipient_frequencies)
+            ),
             "recipient_recency_ratios": {},
         }
 
@@ -2123,6 +2127,9 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
         )
 
         behavioral_metrics = self._build_behavioral_metrics(
+            historical_recipient_frequencies=(
+                historical_recipient_frequencies
+            ),
             historical_recipient_interval_statistics=(
                 historical_recipient_interval_statistics
             ),
@@ -2156,7 +2163,8 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
             unusual_recipient_transitions=unusual_recipient_transitions,
             current_frequency_interval=current_frequency_interval,
             historical_frequency_interval=historical_frequency_interval,
-            frequency_anomaly_detected=frequency_anomaly,
+                frequency_anomaly_detected=frequency_anomaly,
+            )
         )
 
         anomalous_behavioral_features = [
