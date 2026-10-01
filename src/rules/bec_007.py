@@ -1959,7 +1959,7 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
 
         frequency_anomaly = int(frequency_anomaly_detected)
 
-        return {
+        behavioral_features = {
             "sending_hour_anomaly": sending_hour_anomaly,
             "sending_day_anomaly": sending_day_anomaly,
             "timezone_anomaly": timezone_anomaly,
@@ -1978,6 +1978,8 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
             "recipient_recency_anomaly": int(bool(unusual_recipient_recency)),
             "recipient_sequence_anomaly": int(bool(unusual_recipient_transitions)),
         }
+
+        return behavioral_features
 
     def _build_result(
         self,
@@ -2071,6 +2073,21 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
             frequency_anomaly_detected=frequency_anomaly,
         )
 
+        anomalous_behavioral_features = [
+            feature_name
+            for feature_name, value in behavioral_features.items()
+            if value == 1
+        ]
+
+        behavioral_anomaly_count = len(
+            anomalous_behavioral_features
+        )
+
+        behavioral_anomaly_ratio = (
+            behavioral_anomaly_count
+            / len(behavioral_features)
+        )
+
         return {
             "rule_id": self.rule_id,
             "rule_name": self.rule_name,
@@ -2078,6 +2095,11 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
             "matched": matched,
             "indicators": indicators,
             "behavioral_features": behavioral_features,
+            "behavioral_anomaly_count": behavioral_anomaly_count,
+            "behavioral_anomaly_ratio": behavioral_anomaly_ratio,
+            "anomalous_behavioral_features": (
+                anomalous_behavioral_features
+            ),
             "observed_hour": observed_hour,
             "typical_hours": typical_hours,
             "observed_weekday": observed_weekday,

@@ -3369,3 +3369,60 @@ def test_bec_007_invalid_recipient_observation_breaks_transition_sequence():
         )
         in result["historical_recipient_transition_frequencies"]
     )
+
+def test_bec_007_builds_behavioral_summary():
+    """BEC-007 should summarize active behavioral anomaly features."""
+
+    context = build_context(
+        date="Mon, 05 Jan 2026 23:00:00 +0000",
+        typical_hours=[10],
+        recipients=[
+            "new@company.com",
+        ],
+        to_recipients=[
+            "new@company.com",
+        ],
+        historical_observations=[
+            {
+                "result": {
+                    "email": {
+                        "date": "2026-01-01T10:00:00+00:00",
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    }
+                }
+            },
+            {
+                "result": {
+                    "email": {
+                        "date": "2026-01-02T10:00:00+00:00",
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    }
+                }
+            },
+            {
+                "result": {
+                    "email": {
+                        "date": "2026-01-03T10:00:00+00:00",
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    }
+                }
+            },
+        ],
+    )
+
+    result = BehavioralCommunicationAnomalyRule().evaluate(context)
+
+    assert result["behavioral_features"]["sending_hour_anomaly"] == 1
+    assert result["behavioral_features"]["recipient_novelty"] == 1
+
+    assert result["behavioral_anomaly_count"] == 4
+    assert result["behavioral_anomaly_ratio"] == 4 / 12
+    assert result["anomalous_behavioral_features"] == [
+        "sending_hour_anomaly",
+        "recipient_novelty",
+        "recipient_group_anomaly",
+        "recipient_sequence_anomaly",
+    ]
