@@ -282,6 +282,7 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
                 historical_recipient_interval_statistics=(
                     historical_recipient_interval_statistics
                 ),
+                current_recipient_intervals={},
                 unusual_recipient_recency=[],
                 historical_frequency_interval=(
                     historical_frequency_interval
@@ -451,6 +452,9 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
             ),
             historical_recipient_interval_statistics=(
                 historical_recipient_interval_statistics
+            ),
+            current_recipient_intervals=(
+                current_recipient_intervals
             ),
             unusual_recipient_recency=(
                 unusual_recipient_recency
@@ -1905,6 +1909,71 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
         ]
 
     @staticmethod
+    def _build_behavioral_metrics(
+        *,
+        historical_recipient_interval_statistics: dict[
+            str,
+            dict[str, float | int],
+        ],
+        current_recipient_intervals: dict[str, float],
+        historical_frequency_interval: float | None,
+        current_frequency_interval: float | None,
+    ) -> dict[str, Any]:
+        """Build continuous behavioral deviation metrics."""
+
+        metrics: dict[str, Any] = {
+            "frequency_interval_ratio": None,
+            "recipient_recency_ratios": {},
+        }
+
+        if (
+            historical_frequency_interval is not None
+            and current_frequency_interval is not None
+            and historical_frequency_interval > 0
+        ):
+            metrics["frequency_interval_ratio"] = (
+                current_frequency_interval
+                / historical_frequency_interval
+            )
+
+        recipient_recency_ratios: dict[str, float] = {}
+
+        for recipient, current_interval in (
+            current_recipient_intervals.items()
+        ):
+            statistics = (
+                historical_recipient_interval_statistics.get(
+                    recipient
+                )
+            )
+
+            if not statistics:
+                continue
+
+            historical_interval = statistics.get(
+                "median_interval_minutes"
+            )
+
+            if not isinstance(
+                historical_interval,
+                (int, float),
+            ):
+                continue
+
+            if historical_interval <= 0:
+                continue
+
+            recipient_recency_ratios[recipient] = (
+                current_interval
+                / historical_interval
+            )
+
+        metrics["recipient_recency_ratios"] = (
+            recipient_recency_ratios
+        )
+
+        return metrics
+
     def _build_behavioral_features(
         *,
         observed_hour: int | None,
@@ -2041,6 +2110,7 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
             str,
             dict[str, float | int],
         ],
+        current_recipient_intervals: dict[str, float],
         unusual_recipient_recency: list[str],
         historical_frequency_interval: float | None,
         current_frequency_interval: float | None,
@@ -2052,7 +2122,23 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
             historical_frequency_interval,
         )
 
-        behavioral_features = self._build_behavioral_features(
+        behavioral_metrics = self._build_behavioral_metrics(
+            historical_recipient_interval_statistics=(
+                historical_recipient_interval_statistics
+            ),
+            current_recipient_intervals=(
+                current_recipient_intervals
+            ),
+            historical_frequency_interval=(
+                historical_frequency_interval
+            ),
+            current_frequency_interval=(
+                current_frequency_interval
+            ),
+        )
+
+        behavioral_features = (
+            BehavioralCommunicationAnomalyRule._build_behavioral_features(
             observed_hour=observed_hour,
             typical_hours=typical_hours,
             observed_weekday=observed_weekday,
@@ -2095,6 +2181,7 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
             "matched": matched,
             "indicators": indicators,
             "behavioral_features": behavioral_features,
+            "behavioral_metrics": behavioral_metrics,
             "behavioral_anomaly_count": behavioral_anomaly_count,
             "behavioral_anomaly_ratio": behavioral_anomaly_ratio,
             "anomalous_behavioral_features": (

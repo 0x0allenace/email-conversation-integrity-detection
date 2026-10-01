@@ -141,6 +141,54 @@ def test_bec_007_builds_behavioral_feature_vector():
     }
 
 
+def test_bec_007_exposes_behavioral_deviation_metrics():
+    """BEC-007 should expose continuous behavioral deviation metrics."""
+
+    context = build_context(
+        date="Mon, 05 Jan 2026 10:00:00 +0000",
+        typical_hours=[10],
+        recipients=["alice@company.com"],
+        historical_observations=[
+            {
+                "email_sent_at": "2026-01-01T10:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    }
+                }
+            },
+            {
+                "email_sent_at": "2026-01-02T10:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    }
+                }
+            },
+            {
+                "email_sent_at": "2026-01-03T10:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    }
+                }
+            },
+        ],
+    )
+
+    result = BehavioralCommunicationAnomalyRule().evaluate(context)
+
+    assert result["behavioral_metrics"] == {
+        "frequency_interval_ratio": 2.0,
+        "recipient_recency_ratios": {
+            "alice@company.com": 2.0,
+        },
+    }
+
+
 def test_bec_007_detects_unusual_sending_hour():
     """BEC-007 should detect a message sent outside normal hours."""
 
