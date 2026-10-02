@@ -2247,6 +2247,10 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
             float,
         ],
         unusual_recipient_groups: list[tuple[str, ...]],
+        historical_recipient_transition_frequencies: dict[
+            tuple[tuple[str, ...], tuple[str, ...]],
+            float,
+        ],
         unusual_recipient_transitions: list[
             tuple[tuple[str, ...], tuple[str, ...]]
         ],
@@ -2440,6 +2444,13 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
                             current_recipients,
                         ) in unusual_recipient_transitions
                     ],
+                    "transition_frequencies": {
+                        transition: historical_recipient_transition_frequencies.get(
+                            transition,
+                            0.0,
+                        )
+                        for transition in unusual_recipient_transitions
+                    },
                 },
             }
 
@@ -2632,6 +2643,9 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
                     historical_recipient_group_frequencies
                 ),
                 unusual_recipient_groups=unusual_recipient_groups,
+                historical_recipient_transition_frequencies=(
+                    historical_recipient_transition_frequencies
+                ),
                 unusual_recipient_transitions=(
                     unusual_recipient_transitions
                 ),

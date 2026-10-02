@@ -3605,6 +3605,12 @@ def test_bec_007_exposes_behavioral_evidence():
                         ("new@company.com",),
                     ),
                 ],
+                "transition_frequencies": {
+                    (
+                        ("alice@company.com",),
+                        ("new@company.com",),
+                    ): 0.0,
+                },
             },
         },
     }
