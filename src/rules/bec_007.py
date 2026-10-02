@@ -2176,6 +2176,70 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
 
         return behavioral_features
 
+    @staticmethod
+    def _build_behavioral_evidence(
+        *,
+        behavioral_features: dict[str, int],
+        observed_hour: int | None,
+        typical_hours: list[int],
+        unusual_recipients: list[str],
+        unusual_recipient_groups: list[tuple[str, ...]],
+        unusual_recipient_transitions: list[
+            tuple[tuple[str, ...], tuple[str, ...]]
+        ],
+    ) -> dict[str, Any]:
+        """Build evidence provenance for active behavioral features."""
+
+        evidence: dict[str, Any] = {}
+
+        if behavioral_features["sending_hour_anomaly"]:
+            evidence["sending_hour_anomaly"] = {
+                "detected": 1,
+                "evidence": {
+                    "observed_hour": observed_hour,
+                    "typical_hours": list(typical_hours),
+                },
+            }
+
+        if behavioral_features["recipient_novelty"]:
+            evidence["recipient_novelty"] = {
+                "detected": 1,
+                "evidence": {
+                    "recipients": list(unusual_recipients),
+                },
+            }
+
+        if behavioral_features["recipient_group_anomaly"]:
+            evidence["recipient_group_anomaly"] = {
+                "detected": 1,
+                "evidence": {
+                    "groups": [
+                        list(group)
+                        for group in unusual_recipient_groups
+                    ],
+                },
+            }
+
+        if behavioral_features["recipient_sequence_anomaly"]:
+            evidence["recipient_sequence_anomaly"] = {
+                "detected": 1,
+                "evidence": {
+                    "transitions": [
+                        (
+                            previous_recipients,
+                            current_recipients,
+                        )
+                        for (
+                            previous_recipients,
+                            current_recipients,
+                        ) in unusual_recipient_transitions
+                    ],
+                },
+            }
+
+        return evidence
+
+
     def _build_result(
         self,
         *,
@@ -2310,6 +2374,19 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
             )
         )
 
+        behavioral_evidence = (
+            self._build_behavioral_evidence(
+                behavioral_features=behavioral_features,
+                observed_hour=observed_hour,
+                typical_hours=typical_hours,
+                unusual_recipients=unusual_recipients,
+                unusual_recipient_groups=unusual_recipient_groups,
+                unusual_recipient_transitions=(
+                    unusual_recipient_transitions
+                ),
+            )
+        )
+
         anomalous_behavioral_features = [
             feature_name
             for feature_name, value in behavioral_features.items()
@@ -2333,6 +2410,7 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
             "indicators": indicators,
             "behavioral_features": behavioral_features,
             "behavioral_metrics": behavioral_metrics,
+            "behavioral_evidence": behavioral_evidence,
             "behavioral_anomaly_count": behavioral_anomaly_count,
             "behavioral_anomaly_ratio": behavioral_anomaly_ratio,
             "anomalous_behavioral_features": (

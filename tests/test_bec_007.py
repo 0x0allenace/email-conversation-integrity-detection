@@ -3498,3 +3498,84 @@ def test_bec_007_builds_behavioral_summary():
         "recipient_group_anomaly",
         "recipient_sequence_anomaly",
     ]
+
+
+def test_bec_007_exposes_behavioral_evidence():
+    """BEC-007 should expose evidence behind active behavioral features."""
+
+    context = build_context(
+        date="Mon, 05 Jan 2026 23:00:00 +0000",
+        typical_hours=[10],
+        recipients=[
+            "new@company.com",
+        ],
+        to_recipients=[
+            "new@company.com",
+        ],
+        historical_observations=[
+            {
+                "result": {
+                    "email": {
+                        "date": "2026-01-01T10:00:00+00:00",
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    }
+                }
+            },
+            {
+                "result": {
+                    "email": {
+                        "date": "2026-01-02T10:00:00+00:00",
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    }
+                }
+            },
+            {
+                "result": {
+                    "email": {
+                        "date": "2026-01-03T10:00:00+00:00",
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    }
+                }
+            },
+        ],
+    )
+
+    result = BehavioralCommunicationAnomalyRule().evaluate(context)
+
+    assert result["behavioral_evidence"] == {
+        "sending_hour_anomaly": {
+            "detected": 1,
+            "evidence": {
+                "observed_hour": 23,
+                "typical_hours": [10],
+            },
+        },
+        "recipient_novelty": {
+            "detected": 1,
+            "evidence": {
+                "recipients": ["new@company.com"],
+            },
+        },
+        "recipient_group_anomaly": {
+            "detected": 1,
+            "evidence": {
+                "groups": [
+                    ["new@company.com"],
+                ],
+            },
+        },
+        "recipient_sequence_anomaly": {
+            "detected": 1,
+            "evidence": {
+                "transitions": [
+                    (
+                        ("alice@company.com",),
+                        ("new@company.com",),
+                    ),
+                ],
+            },
+        },
+    }
