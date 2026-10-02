@@ -1973,6 +1973,10 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
             tuple[tuple[str, ...], tuple[str, ...]],
             float,
         ],
+        historical_individual_recipient_role_frequencies: dict[
+            tuple[str, str],
+            float,
+        ],
         current_recipients: list[str],
         current_recipient_pair_frequencies: dict[
             tuple[str, str],
@@ -2002,6 +2006,7 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
             "recipient_pair_frequencies": (
                 dict(current_recipient_pair_frequencies)
             ),
+            "recipient_role_frequencies": {},
             "recipient_transition_frequency": None,
             "recipient_recency_ratios": {},
         }
@@ -2030,6 +2035,22 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
                     recipient_group
                 )
             )
+
+        normalized_historical_recipient_role_frequencies = (
+            {
+                (
+                    role_key[0],
+                    "To" if role_key[1] == "to" else "Cc",
+                ): frequency
+                for role_key, frequency
+                in historical_individual_recipient_role_frequencies.items()
+                if role_key[0] in normalized_recipients
+            }
+        )
+
+        metrics["recipient_role_frequencies"] = (
+            normalized_historical_recipient_role_frequencies
+        )
 
         if (
             historical_frequency_interval is not None
@@ -2238,6 +2259,9 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
             ),
             historical_recipient_transition_frequencies=(
                 historical_recipient_transition_frequencies
+            ),
+            historical_individual_recipient_role_frequencies=(
+                historical_individual_recipient_role_frequencies
             ),
             current_recipients=current_recipients,
             current_recipient_pair_frequencies=(

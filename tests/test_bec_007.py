@@ -188,6 +188,12 @@ def test_bec_007_exposes_behavioral_deviation_metrics():
         },
         "recipient_group_frequency": 1.0,
         "recipient_pair_frequencies": {},
+        "recipient_role_frequencies": {
+            (
+                "alice@company.com",
+                "To",
+            ): 1.0,
+        },
         "recipient_transition_frequency": 1.0,
         "recipient_recency_ratios": {
             "alice@company.com": 2.0,
