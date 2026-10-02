@@ -2242,6 +2242,10 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
         recipient_recency_ratios: dict[str, float],
         unusual_recipient_recency: list[str],
         unusual_recipients: list[str],
+        historical_recipient_group_frequencies: dict[
+            tuple[str, ...],
+            float,
+        ],
         unusual_recipient_groups: list[tuple[str, ...]],
         unusual_recipient_transitions: list[
             tuple[tuple[str, ...], tuple[str, ...]]
@@ -2412,6 +2416,13 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
                         list(group)
                         for group in unusual_recipient_groups
                     ],
+                    "group_frequencies": {
+                        group: historical_recipient_group_frequencies.get(
+                            group,
+                            0.0,
+                        )
+                        for group in unusual_recipient_groups
+                    },
                 },
             }
 
@@ -2617,6 +2628,9 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
                     unusual_recipient_recency
                 ),
                 unusual_recipients=unusual_recipients,
+                historical_recipient_group_frequencies=(
+                    historical_recipient_group_frequencies
+                ),
                 unusual_recipient_groups=unusual_recipient_groups,
                 unusual_recipient_transitions=(
                     unusual_recipient_transitions

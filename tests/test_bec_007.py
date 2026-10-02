@@ -3591,6 +3591,9 @@ def test_bec_007_exposes_behavioral_evidence():
                 "groups": [
                     ["new@company.com"],
                 ],
+                "group_frequencies": {
+                    ("new@company.com",): 0.0,
+                },
             },
         },
         "recipient_sequence_anomaly": {
