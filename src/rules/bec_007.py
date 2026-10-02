@@ -96,6 +96,14 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
             )
         )
 
+        current_recipient_pair_frequencies = (
+            self._build_current_recipient_pair_frequencies(
+                context.recipients,
+                historical_recipients,
+                historical_recipient_cooccurrences,
+            )
+        )
+
         unusual_recipient_pairs = (
             self._find_unusual_recipient_pairs(
                 context.recipients,
@@ -249,6 +257,9 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
                 infrequent_recipients=infrequent_recipients,
                 historical_recipient_cooccurrences=(
                     historical_recipient_cooccurrences
+                ),
+                current_recipient_pair_frequencies=(
+                    current_recipient_pair_frequencies
                 ),
                 unusual_recipient_pairs=(
                     unusual_recipient_pairs
@@ -421,6 +432,9 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
             infrequent_recipients=infrequent_recipients,
             historical_recipient_cooccurrences=(
                 historical_recipient_cooccurrences
+            ),
+            current_recipient_pair_frequencies=(
+                current_recipient_pair_frequencies
             ),
             unusual_recipient_pairs=(
                 unusual_recipient_pairs
@@ -999,6 +1013,44 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
             pair: count / valid_observations
             for pair, count in sorted(
                 pair_counts.items()
+            )
+        }
+
+    @classmethod
+    def _build_current_recipient_pair_frequencies(
+        cls,
+        current_recipients: list[str],
+        historical_recipients: set[str],
+        historical_cooccurrences: dict[
+            tuple[str, str],
+            float,
+        ],
+    ) -> dict[tuple[str, str], float]:
+        """Expose historical frequencies for current recipient pairs."""
+
+        normalized_current_recipients = (
+            cls._normalize_recipients(
+                current_recipients
+            )
+        )
+
+        known_current_recipients = [
+            recipient
+            for recipient in normalized_current_recipients
+            if recipient in historical_recipients
+        ]
+
+        if len(known_current_recipients) < 2:
+            return {}
+
+        return {
+            pair: historical_cooccurrences.get(
+                pair,
+                0.0,
+            )
+            for pair in combinations(
+                sorted(known_current_recipients),
+                2,
             )
         }
 
@@ -1922,6 +1974,10 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
             float,
         ],
         current_recipients: list[str],
+        current_recipient_pair_frequencies: dict[
+            tuple[str, str],
+            float,
+        ],
         historical_recipient_group_frequencies: dict[
             tuple[str, ...],
             float,
@@ -1943,6 +1999,9 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
                 dict(historical_recipient_frequencies)
             ),
             "recipient_group_frequency": None,
+            "recipient_pair_frequencies": (
+                dict(current_recipient_pair_frequencies)
+            ),
             "recipient_transition_frequency": None,
             "recipient_recency_ratios": {},
         }
@@ -2118,6 +2177,10 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
             tuple[str, str],
             float,
         ],
+        current_recipient_pair_frequencies: dict[
+            tuple[str, str],
+            float,
+        ],
         unusual_recipient_pairs: list[
             tuple[str, str]
         ],
@@ -2177,6 +2240,9 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
                 historical_recipient_transition_frequencies
             ),
             current_recipients=current_recipients,
+            current_recipient_pair_frequencies=(
+                current_recipient_pair_frequencies
+            ),
             historical_recipient_group_frequencies=(
                 historical_recipient_group_frequencies
             ),

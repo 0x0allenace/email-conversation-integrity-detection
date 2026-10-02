@@ -187,6 +187,7 @@ def test_bec_007_exposes_behavioral_deviation_metrics():
             "alice@company.com": 1.0,
         },
         "recipient_group_frequency": 1.0,
+        "recipient_pair_frequencies": {},
         "recipient_transition_frequency": 1.0,
         "recipient_recency_ratios": {
             "alice@company.com": 2.0,
@@ -1209,6 +1210,16 @@ def test_bec_007_allows_established_recipient_cooccurrence():
 
     assert (
         result["historical_recipient_cooccurrences"][
+            (
+                "alice@company.com",
+                "finance@company.com",
+            )
+        ]
+        == 1.0
+    )
+
+    assert (
+        result["behavioral_metrics"]["recipient_pair_frequencies"][
             (
                 "alice@company.com",
                 "finance@company.com",
