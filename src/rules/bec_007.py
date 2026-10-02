@@ -232,6 +232,7 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
             return self._build_result(
                 matched=bool(indicators),
                 indicators=indicators,
+                current_recipients=context.recipients,
                 observed_hour=None,
                 typical_hours=typical_hours,
                 observed_weekday=None,
@@ -403,6 +404,7 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
         return self._build_result(
             matched=matched,
             indicators=indicators,
+            current_recipients=context.recipients,
             observed_hour=observed_hour,
             typical_hours=typical_hours,
             observed_weekday=observed_weekday,
@@ -1911,6 +1913,19 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
     @staticmethod
     def _build_behavioral_metrics(
         *,
+        current_recipient_transition: tuple[
+            tuple[str, ...],
+            tuple[str, ...],
+        ] | None,
+        historical_recipient_transition_frequencies: dict[
+            tuple[tuple[str, ...], tuple[str, ...]],
+            float,
+        ],
+        current_recipients: list[str],
+        historical_recipient_group_frequencies: dict[
+            tuple[str, ...],
+            float,
+        ],
         historical_recipient_frequencies: dict[str, float],
         historical_recipient_interval_statistics: dict[
             str,
@@ -1927,8 +1942,35 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
             "recipient_historical_frequencies": (
                 dict(historical_recipient_frequencies)
             ),
+            "recipient_group_frequency": None,
+            "recipient_transition_frequency": None,
             "recipient_recency_ratios": {},
         }
+
+        if current_recipient_transition is not None:
+            metrics["recipient_transition_frequency"] = (
+                historical_recipient_transition_frequencies.get(
+                    current_recipient_transition,
+                    0.0,
+                )
+            )
+
+        normalized_recipients = (
+            BehavioralCommunicationAnomalyRule._normalize_recipients(
+                current_recipients
+            )
+        )
+
+        recipient_group = tuple(
+            sorted(normalized_recipients)
+        )
+
+        if recipient_group:
+            metrics["recipient_group_frequency"] = (
+                historical_recipient_group_frequencies.get(
+                    recipient_group
+                )
+            )
 
         if (
             historical_frequency_interval is not None
@@ -2059,6 +2101,7 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
         *,
         matched: bool,
         indicators: list[str],
+        current_recipients: list[str],
         observed_hour: int | None,
         typical_hours: list[int],
         observed_weekday: int | None,
@@ -2127,6 +2170,16 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
         )
 
         behavioral_metrics = self._build_behavioral_metrics(
+            current_recipient_transition=(
+                current_recipient_transition
+            ),
+            historical_recipient_transition_frequencies=(
+                historical_recipient_transition_frequencies
+            ),
+            current_recipients=current_recipients,
+            historical_recipient_group_frequencies=(
+                historical_recipient_group_frequencies
+            ),
             historical_recipient_frequencies=(
                 historical_recipient_frequencies
             ),

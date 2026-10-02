@@ -186,6 +186,8 @@ def test_bec_007_exposes_behavioral_deviation_metrics():
         "recipient_historical_frequencies": {
             "alice@company.com": 1.0,
         },
+        "recipient_group_frequency": 1.0,
+        "recipient_transition_frequency": 1.0,
         "recipient_recency_ratios": {
             "alice@company.com": 2.0,
         },
@@ -3046,6 +3048,8 @@ def test_bec_007_detects_unusual_recipient_transition():
         ("alice@company.com",),
         ("hr@company.com",),
     )
+
+    assert result["behavioral_metrics"]["recipient_transition_frequency"] == 0.0
 
     assert (
         (
