@@ -596,6 +596,8 @@ def test_bec_007_detects_unusual_historical_recipient():
     context = build_context(
         date="Wed, 23 Sep 2026 10:30:00 +0100",
         typical_hours=[10],
+        typical_days=[1],
+        typical_timezone_offsets=[60],
         recipients=[
             "alice@company.com",
             "attacker@evil.com",
@@ -3490,10 +3492,11 @@ def test_bec_007_builds_behavioral_summary():
     assert result["behavioral_features"]["sending_hour_anomaly"] == 1
     assert result["behavioral_features"]["recipient_novelty"] == 1
 
-    assert result["behavioral_anomaly_count"] == 4
-    assert result["behavioral_anomaly_ratio"] == 4 / 12
+    assert result["behavioral_anomaly_count"] == 5
+    assert result["behavioral_anomaly_ratio"] == 5 / 12
     assert result["anomalous_behavioral_features"] == [
         "sending_hour_anomaly",
+        "historical_hour_anomaly",
         "recipient_novelty",
         "recipient_group_anomaly",
         "recipient_sequence_anomaly",
@@ -3506,6 +3509,8 @@ def test_bec_007_exposes_behavioral_evidence():
     context = build_context(
         date="Mon, 05 Jan 2026 23:00:00 +0000",
         typical_hours=[10],
+        typical_days=[1],
+        typical_timezone_offsets=[60],
         recipients=[
             "new@company.com",
         ],
@@ -3551,6 +3556,27 @@ def test_bec_007_exposes_behavioral_evidence():
             "evidence": {
                 "observed_hour": 23,
                 "typical_hours": [10],
+            },
+        },
+        "sending_day_anomaly": {
+            "detected": 1,
+            "evidence": {
+                "observed_weekday": 0,
+                "typical_days": [1],
+            },
+        },
+        "timezone_anomaly": {
+            "detected": 1,
+            "evidence": {
+                "observed_timezone_offset": 0,
+                "typical_timezone_offsets": [60],
+            },
+        },
+        "historical_hour_anomaly": {
+            "detected": 1,
+            "evidence": {
+                "observed_hour": 23,
+                "historical_hour_range": [10, 10],
             },
         },
         "recipient_novelty": {

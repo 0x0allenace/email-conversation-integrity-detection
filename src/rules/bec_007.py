@@ -531,6 +531,44 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
         return int(utc_offset.total_seconds() // 60)
 
     @classmethod
+    def _extract_historical_email_date(
+        cls,
+        observation: dict[str, Any],
+    ) -> datetime | None:
+        """Extract a historical email timestamp from supported observation shapes."""
+
+        email_sent_at = observation.get(
+            "email_sent_at"
+        )
+
+        if isinstance(email_sent_at, datetime):
+            return email_sent_at
+
+        if isinstance(email_sent_at, str):
+            return cls._parse_historical_timestamp(
+                email_sent_at
+            )
+
+        result = observation.get("result")
+
+        if not isinstance(result, dict):
+            return None
+
+        email = result.get("email")
+
+        if not isinstance(email, dict):
+            return None
+
+        email_date = email.get("date")
+
+        if not isinstance(email_date, str):
+            return None
+
+        return cls._parse_historical_timestamp(
+            email_date
+        )
+
+    @classmethod
     def _extract_historical_hours(
         cls,
         observations: list[dict[str, Any]],
@@ -540,25 +578,17 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
         historical_hours: list[int] = []
 
         for observation in observations:
-            email_sent_at = observation.get(
-                "email_sent_at"
-            )
-
-            if isinstance(email_sent_at, datetime):
-                historical_hours.append(
-                    email_sent_at.hour
-                )
+            if not isinstance(observation, dict):
                 continue
 
-            if isinstance(email_sent_at, str):
-                parsed_timestamp = cls._parse_historical_timestamp(
-                    email_sent_at
-                )
+            parsed_timestamp = cls._extract_historical_email_date(
+                observation
+            )
 
-                if parsed_timestamp is not None:
-                    historical_hours.append(
-                        parsed_timestamp.hour
-                    )
+            if parsed_timestamp is not None:
+                historical_hours.append(
+                    parsed_timestamp.hour
+                )
 
         return historical_hours
 
@@ -2182,6 +2212,11 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
         behavioral_features: dict[str, int],
         observed_hour: int | None,
         typical_hours: list[int],
+        observed_weekday: int | None,
+        typical_days: list[int],
+        observed_timezone_offset: int | None,
+        typical_timezone_offsets: list[int],
+        historical_hour_range: tuple[int, int] | None,
         unusual_recipients: list[str],
         unusual_recipient_groups: list[tuple[str, ...]],
         unusual_recipient_transitions: list[
@@ -2198,6 +2233,39 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
                 "evidence": {
                     "observed_hour": observed_hour,
                     "typical_hours": list(typical_hours),
+                },
+            }
+
+        if behavioral_features["sending_day_anomaly"]:
+            evidence["sending_day_anomaly"] = {
+                "detected": 1,
+                "evidence": {
+                    "observed_weekday": observed_weekday,
+                    "typical_days": list(typical_days),
+                },
+            }
+
+        if behavioral_features["timezone_anomaly"]:
+            evidence["timezone_anomaly"] = {
+                "detected": 1,
+                "evidence": {
+                    "observed_timezone_offset": observed_timezone_offset,
+                    "typical_timezone_offsets": list(
+                        typical_timezone_offsets
+                    ),
+                },
+            }
+
+        if behavioral_features["historical_hour_anomaly"]:
+            evidence["historical_hour_anomaly"] = {
+                "detected": 1,
+                "evidence": {
+                    "observed_hour": observed_hour,
+                    "historical_hour_range": (
+                        list(historical_hour_range)
+                        if historical_hour_range is not None
+                        else None
+                    ),
                 },
             }
 
@@ -2379,6 +2447,11 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
                 behavioral_features=behavioral_features,
                 observed_hour=observed_hour,
                 typical_hours=typical_hours,
+                observed_weekday=observed_weekday,
+                typical_days=typical_days,
+                observed_timezone_offset=observed_timezone_offset,
+                typical_timezone_offsets=typical_timezone_offsets,
+                historical_hour_range=historical_hour_range,
                 unusual_recipients=unusual_recipients,
                 unusual_recipient_groups=unusual_recipient_groups,
                 unusual_recipient_transitions=(
