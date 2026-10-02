@@ -3605,3 +3605,360 @@ def test_bec_007_exposes_behavioral_evidence():
             },
         },
     }
+
+def test_bec_007_exposes_frequency_anomaly_evidence():
+    """BEC-007 should expose evidence behind a sending-frequency anomaly."""
+
+    rule = BehavioralCommunicationAnomalyRule()
+
+    context = build_context(
+        date="Wed, 23 Sep 2026 10:00:00 +0000",
+        typical_hours=[10],
+        historical_observations=[
+            {
+                "email_sent_at": "2026-09-20T10:00:00+00:00",
+            },
+            {
+                "email_sent_at": "2026-09-21T10:00:00+00:00",
+            },
+            {
+                "email_sent_at": "2026-09-22T10:00:00+00:00",
+            },
+            {
+                "email_sent_at": "2026-09-23T08:00:00+00:00",
+            },
+        ],
+    )
+
+    result = rule.evaluate(context)
+
+    assert result["behavioral_evidence"]["frequency_anomaly"] == {
+        "detected": 1,
+        "evidence": {
+            "current_interval_minutes": 120.0,
+            "historical_interval_minutes": 1440.0,
+            "frequency_interval_ratio": 120.0 / 1440.0,
+        },
+    }
+
+
+def test_bec_007_exposes_recipient_frequency_anomaly_evidence():
+    """BEC-007 should expose evidence behind a recipient-frequency anomaly."""
+
+    rule = BehavioralCommunicationAnomalyRule()
+
+    context = build_context(
+        date="Wed, 23 Sep 2026 10:30:00 +0100",
+        typical_hours=[10],
+        recipients=[
+            "alice@company.com",
+            "finance@company.com",
+        ],
+        historical_observations=[
+            {
+                "email_sent_at": "2026-09-20T09:30:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-21T10:30:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-22T14:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": [
+                            "alice@company.com",
+                            "finance@company.com",
+                        ],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-23T09:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-23T09:30:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-23T10:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-23T10:15:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-23T10:20:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-23T10:25:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-23T10:28:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+        ],
+    )
+
+    result = rule.evaluate(context)
+
+    assert result["behavioral_evidence"]["recipient_frequency_anomaly"] == {
+        "detected": 1,
+        "evidence": {
+            "recipients": ["finance@company.com"],
+            "historical_frequencies": {
+                "finance@company.com": 0.1,
+            },
+        },
+    }
+
+
+def test_bec_007_exposes_recipient_relationship_anomaly_evidence():
+    """BEC-007 should expose evidence behind an unusual recipient relationship."""
+
+    rule = BehavioralCommunicationAnomalyRule()
+
+    context = build_context(
+        date="Wed, 23 Sep 2026 10:30:00 +0100",
+        typical_hours=[10],
+        recipients=[
+            "alice@company.com",
+            "ceo@company.com",
+        ],
+        historical_observations=[
+            {
+                "email_sent_at": "2026-09-20T09:30:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-21T10:30:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["ceo@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-22T11:30:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+        ],
+    )
+
+    result = rule.evaluate(context)
+
+    assert result["behavioral_evidence"]["recipient_relationship_anomaly"] == {
+        "detected": 1,
+        "evidence": {
+            "pairs": [
+                [
+                    "alice@company.com",
+                    "ceo@company.com",
+                ],
+            ],
+            "pair_frequencies": {
+                (
+                    "alice@company.com",
+                    "ceo@company.com",
+                ): 0.0,
+            },
+        },
+    }
+
+
+def test_bec_007_exposes_recipient_role_anomaly_evidence():
+    """BEC-007 should expose evidence behind an unusual recipient role."""
+
+    rule = BehavioralCommunicationAnomalyRule()
+
+    context = build_context(
+        date="Fri, 18 Sep 2026 10:00:00 +0100",
+        typical_hours=[10],
+        recipients=[
+            "alice@company.com",
+            "finance@company.com",
+        ],
+        to_recipients=[
+            "finance@company.com",
+        ],
+        cc_recipients=[
+            "alice@company.com",
+        ],
+        historical_observations=[
+            {
+                "email_sent_at": "2026-09-15T09:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": ["finance@company.com"],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-16T10:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": ["finance@company.com"],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-17T10:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": ["finance@company.com"],
+                    },
+                },
+            },
+        ],
+    )
+
+    result = rule.evaluate(context)
+
+    assert result["behavioral_evidence"]["recipient_role_anomaly"] == {
+        "detected": 1,
+        "evidence": {
+            "individual_roles": [
+                {
+                    "recipient": "alice@company.com",
+                    "role": "cc",
+                    "historical_frequency": 0.0,
+                },
+                {
+                    "recipient": "finance@company.com",
+                    "role": "to",
+                    "historical_frequency": 0.0,
+                },
+            ],
+            "role_pairs": [
+                {
+                    "recipient_1": "alice@company.com",
+                    "role_1": "cc",
+                    "recipient_2": "finance@company.com",
+                    "role_2": "to",
+                    "historical_frequency": 0.0,
+                },
+            ],
+        },
+    }
+
+
+def test_bec_007_exposes_recipient_recency_anomaly_evidence():
+    """BEC-007 should expose evidence behind an unusual recipient recency anomaly."""
+
+    rule = BehavioralCommunicationAnomalyRule()
+
+    context = build_context(
+        date="Wed, 23 Sep 2026 10:00:00 +0000",
+        typical_hours=[10],
+        recipients=[
+            "alice@company.com",
+        ],
+        historical_observations=[
+            {
+                "email_sent_at": "2026-09-20T10:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-20T11:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+            {
+                "email_sent_at": "2026-09-20T12:00:00+00:00",
+                "result": {
+                    "email": {
+                        "to": ["alice@company.com"],
+                        "cc": [],
+                    },
+                },
+            },
+        ],
+    )
+
+    result = rule.evaluate(context)
+
+    assert result["behavioral_evidence"]["recipient_recency_anomaly"] == {
+        "detected": 1,
+        "evidence": {
+            "recipients": [
+                "alice@company.com",
+            ],
+            "recency_ratios": {
+                "alice@company.com": 70.0,
+            },
+        },
+    }

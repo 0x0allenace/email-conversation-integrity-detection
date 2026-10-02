@@ -2217,6 +2217,30 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
         observed_timezone_offset: int | None,
         typical_timezone_offsets: list[int],
         historical_hour_range: tuple[int, int] | None,
+        frequency_interval_ratio: float | None,
+        historical_frequency_interval: float | None,
+        current_frequency_interval: float | None,
+        historical_recipient_frequencies: dict[str, float],
+        infrequent_recipients: list[str],
+        current_recipient_pair_frequencies: dict[
+            tuple[str, str],
+            float,
+        ],
+        unusual_recipient_pairs: list[tuple[str, str]],
+        historical_individual_recipient_role_frequencies: dict[
+            tuple[str, str],
+            float,
+        ],
+        historical_recipient_role_frequencies: dict[
+            tuple[str, str, str, str],
+            float,
+        ],
+        unusual_recipient_roles: list[tuple[str, str]],
+        unusual_recipient_role_pairs: list[
+            tuple[str, str, str, str]
+        ],
+        recipient_recency_ratios: dict[str, float],
+        unusual_recipient_recency: list[str],
         unusual_recipients: list[str],
         unusual_recipient_groups: list[tuple[str, ...]],
         unusual_recipient_transitions: list[
@@ -2266,6 +2290,109 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
                         if historical_hour_range is not None
                         else None
                     ),
+                },
+            }
+
+        if behavioral_features["frequency_anomaly"]:
+            evidence["frequency_anomaly"] = {
+                "detected": 1,
+                "evidence": {
+                    "current_interval_minutes": current_frequency_interval,
+                    "historical_interval_minutes": historical_frequency_interval,
+                    "frequency_interval_ratio": frequency_interval_ratio,
+                },
+            }
+
+        if behavioral_features["recipient_frequency_anomaly"]:
+            evidence["recipient_frequency_anomaly"] = {
+                "detected": 1,
+                "evidence": {
+                    "recipients": list(infrequent_recipients),
+                    "historical_frequencies": {
+                        recipient: historical_recipient_frequencies.get(
+                            recipient,
+                            0.0,
+                        )
+                        for recipient in infrequent_recipients
+                    },
+                },
+            }
+
+        if behavioral_features["recipient_relationship_anomaly"]:
+            evidence["recipient_relationship_anomaly"] = {
+                "detected": 1,
+                "evidence": {
+                    "pairs": [
+                        list(pair)
+                        for pair in unusual_recipient_pairs
+                    ],
+                    "pair_frequencies": {
+                        pair: current_recipient_pair_frequencies.get(
+                            pair,
+                            0.0,
+                        )
+                        for pair in unusual_recipient_pairs
+                    },
+                },
+            }
+
+        if behavioral_features["recipient_role_anomaly"]:
+            evidence["recipient_role_anomaly"] = {
+                "detected": 1,
+                "evidence": {
+                    "individual_roles": [
+                        {
+                            "recipient": recipient,
+                            "role": role,
+                            "historical_frequency": (
+                                historical_individual_recipient_role_frequencies.get(
+                                    (recipient, role),
+                                    0.0,
+                                )
+                            ),
+                        }
+                        for recipient, role in unusual_recipient_roles
+                    ],
+                    "role_pairs": [
+                        {
+                            "recipient_1": recipient_1,
+                            "role_1": role_1,
+                            "recipient_2": recipient_2,
+                            "role_2": role_2,
+                            "historical_frequency": (
+                                historical_recipient_role_frequencies.get(
+                                    (
+                                        recipient_1,
+                                        role_1,
+                                        recipient_2,
+                                        role_2,
+                                    ),
+                                    0.0,
+                                )
+                            ),
+                        }
+                        for (
+                            recipient_1,
+                            role_1,
+                            recipient_2,
+                            role_2,
+                        ) in unusual_recipient_role_pairs
+                    ],
+                },
+            }
+
+        if behavioral_features["recipient_recency_anomaly"]:
+            evidence["recipient_recency_anomaly"] = {
+                "detected": 1,
+                "evidence": {
+                    "recipients": list(unusual_recipient_recency),
+                    "recency_ratios": {
+                        recipient: recipient_recency_ratios.get(
+                            recipient,
+                            0.0,
+                        )
+                        for recipient in unusual_recipient_recency
+                    },
                 },
             }
 
@@ -2452,6 +2579,43 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
                 observed_timezone_offset=observed_timezone_offset,
                 typical_timezone_offsets=typical_timezone_offsets,
                 historical_hour_range=historical_hour_range,
+                frequency_interval_ratio=(
+                    behavioral_metrics["frequency_interval_ratio"]
+                ),
+                historical_frequency_interval=(
+                    historical_frequency_interval
+                ),
+                current_frequency_interval=(
+                    current_frequency_interval
+                ),
+                historical_recipient_frequencies=(
+                    historical_recipient_frequencies
+                ),
+                infrequent_recipients=infrequent_recipients,
+                current_recipient_pair_frequencies=(
+                    current_recipient_pair_frequencies
+                ),
+                unusual_recipient_pairs=(
+                    unusual_recipient_pairs
+                ),
+                historical_individual_recipient_role_frequencies=(
+                    historical_individual_recipient_role_frequencies
+                ),
+                historical_recipient_role_frequencies=(
+                    historical_recipient_role_frequencies
+                ),
+                unusual_recipient_roles=(
+                    unusual_recipient_roles
+                ),
+                unusual_recipient_role_pairs=(
+                    unusual_recipient_role_pairs
+                ),
+                recipient_recency_ratios=(
+                    behavioral_metrics["recipient_recency_ratios"]
+                ),
+                unusual_recipient_recency=(
+                    unusual_recipient_recency
+                ),
                 unusual_recipients=unusual_recipients,
                 unusual_recipient_groups=unusual_recipient_groups,
                 unusual_recipient_transitions=(
