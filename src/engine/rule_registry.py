@@ -12,6 +12,7 @@ from src.rules.bec_004 import AuthenticationAnomalyRule
 from src.rules.bec_005 import SenderInfrastructureAnomalyRule
 from src.rules.bec_006 import ConversationHijackingRule
 from src.rules.bec_007 import BehavioralCommunicationAnomalyRule
+from src.rules.bec_008 import MessageContentAnomalyRule
 
 
 RuleType: TypeAlias = type[DetectionRule]
@@ -28,6 +29,7 @@ class RuleRegistry:
         SenderInfrastructureAnomalyRule,
         ConversationHijackingRule,
         BehavioralCommunicationAnomalyRule,
+        MessageContentAnomalyRule,
     )
 
     def __init__(

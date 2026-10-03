@@ -19,6 +19,7 @@ def test_registry_loads_all_default_rules():
         "BEC-005",
         "BEC-006",
         "BEC-007",
+        "BEC-008",
     ]
 
 
@@ -29,7 +30,7 @@ def test_registry_returns_rule_instances():
 
     rules = registry.get_rules()
 
-    assert len(rules) == 7
+    assert len(rules) == 8
 
     for rule in rules:
         assert hasattr(rule, "evaluate")

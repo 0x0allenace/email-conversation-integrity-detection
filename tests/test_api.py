@@ -263,7 +263,7 @@ def test_analyze_response_detection_structure() -> None:
 
     detections = response.json()["detections"]
 
-    assert len(detections) == 7
+    assert len(detections) == 8
 
     for detection in detections:
         assert set(detection.keys()) >= {
