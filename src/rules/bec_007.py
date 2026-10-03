@@ -2587,7 +2587,7 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
             unusual_recipient_transitions=unusual_recipient_transitions,
             current_frequency_interval=current_frequency_interval,
             historical_frequency_interval=historical_frequency_interval,
-                frequency_anomaly_detected=frequency_anomaly,
+            frequency_anomaly_detected=frequency_anomaly,
             )
         )
 
