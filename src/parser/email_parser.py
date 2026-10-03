@@ -87,6 +87,7 @@ class EmailParser:
             "reply_to": reply_to,
             "return_path": return_path,
             "subject": message.get("Subject", ""),
+            "body": self._extract_body(message),
             "date": message.get("Date", ""),
             "message_id": message.get("Message-ID", ""),
             "in_reply_to": message.get("In-Reply-To", ""),
@@ -97,6 +98,50 @@ class EmailParser:
             ),
             "received": message.get_all("Received", []),
         }
+
+    @staticmethod
+    def _extract_body(
+        message: EmailMessage,
+    ) -> str:
+        """Extract the preferred textual body from an email."""
+
+        if not message.is_multipart():
+            content = message.get_content()
+
+            if isinstance(content, str):
+                return content
+
+            return ""
+
+        plain_text_parts: list[str] = []
+        html_parts: list[str] = []
+
+        for part in message.walk():
+            if part.is_multipart():
+                continue
+
+            content_type = part.get_content_type()
+
+            if content_type == "text/plain":
+                content = part.get_content()
+
+                if isinstance(content, str):
+                    plain_text_parts.append(content)
+
+            elif content_type == "text/html":
+                content = part.get_content()
+
+                if isinstance(content, str):
+                    html_parts.append(content)
+
+        if plain_text_parts:
+            return "\n".join(plain_text_parts)
+
+        if html_parts:
+            return "\n".join(html_parts)
+
+        return ""
+
 
     @staticmethod
     def _normalize_single_address(header: Any) -> str:
