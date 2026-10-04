@@ -80,6 +80,8 @@ class EmailParser:
             message.get_all("Cc", [])
         )
 
+        attachments = self._extract_attachments(message)
+
         return {
             "from": sender,
             "to": to_addresses,
@@ -88,6 +90,8 @@ class EmailParser:
             "return_path": return_path,
             "subject": message.get("Subject", ""),
             "body": self._extract_body(message),
+            "attachments": attachments,
+            "attachment_count": len(attachments),
             "date": message.get("Date", ""),
             "message_id": message.get("Message-ID", ""),
             "in_reply_to": message.get("In-Reply-To", ""),
@@ -142,6 +146,36 @@ class EmailParser:
 
         return ""
 
+    @staticmethod
+    def _extract_attachments(
+        message: EmailMessage,
+    ) -> list[dict[str, Any]]:
+        """Extract metadata for email attachments without storing payloads."""
+
+        attachments: list[dict[str, Any]] = []
+
+        for part in message.walk():
+            if part.is_multipart():
+                continue
+
+            filename = part.get_filename()
+            disposition = part.get_content_disposition()
+
+            if filename is None and disposition != "attachment":
+                continue
+
+            payload = part.get_payload(decode=True)
+            size_bytes = len(payload) if payload is not None else 0
+
+            attachments.append(
+                {
+                    "filename": filename or "",
+                    "content_type": part.get_content_type(),
+                    "size_bytes": size_bytes,
+                }
+            )
+
+        return attachments
 
     @staticmethod
     def _normalize_single_address(header: Any) -> str:

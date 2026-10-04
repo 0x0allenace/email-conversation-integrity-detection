@@ -124,3 +124,57 @@ def test_parse_email_without_body(tmp_path):
     email_data = parser.parse_file(email_file)
 
     assert email_data["body"] == ""
+
+
+def test_parser_extracts_attachment_metadata():
+    attachment_email = (
+        Path(__file__).resolve().parents[1]
+        / "samples"
+        / "attachments"
+        / "attachment-conversation.eml"
+    )
+
+    parser = EmailParser()
+    email_data = parser.parse_file(attachment_email)
+
+    assert email_data["attachment_count"] == 1
+    assert email_data["attachments"] == [
+        {
+            "filename": "invoice.pdf",
+            "content_type": "application/pdf",
+            "size_bytes": 9,
+        }
+    ]
+
+
+def test_parser_does_not_store_attachment_payload():
+    attachment_email = (
+        Path(__file__).resolve().parents[1]
+        / "samples"
+        / "attachments"
+        / "attachment-conversation.eml"
+    )
+
+    parser = EmailParser()
+    email_data = parser.parse_file(attachment_email)
+
+    attachment = email_data["attachments"][0]
+
+    assert "payload" not in attachment
+    assert "content" not in attachment
+    assert "data" not in attachment
+
+
+def test_parser_returns_empty_attachment_metadata_when_no_attachments():
+    sample_email = (
+        Path(__file__).resolve().parents[1]
+        / "samples"
+        / "legitimate"
+        / "normal-conversation.eml"
+    )
+
+    parser = EmailParser()
+    email_data = parser.parse_file(sample_email)
+
+    assert email_data["attachments"] == []
+    assert email_data["attachment_count"] == 0

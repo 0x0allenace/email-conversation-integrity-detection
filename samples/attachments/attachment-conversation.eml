@@ -1,0 +1,21 @@
+From: Alice Johnson <alice@company.com>
+To: Bob Smith <bob@company.com>
+Subject: Invoice Review
+Date: Mon, 14 Sep 2026 10:30:00 +0100
+Message-ID: <attachment-test@company.com>
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="boundary123"
+
+--boundary123
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 7bit
+
+Please review the attached invoice.
+
+--boundary123
+Content-Type: application/pdf
+Content-Disposition: attachment; filename="invoice.pdf"
+Content-Transfer-Encoding: base64
+
+JVBERi0xLjQK
+--boundary123--
