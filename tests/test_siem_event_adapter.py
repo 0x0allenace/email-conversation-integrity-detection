@@ -128,3 +128,30 @@ def test_from_detection_handles_missing_optional_analysis_data():
     assert event.authentication == {}
     assert event.infrastructure == {}
     assert event.conversation == {}
+
+
+def test_detection_result_accepts_structured_indicators():
+    """Test that detection results accept structured rule indicators."""
+
+    detection = DetectionResult(
+        rule_id="BEC-008",
+        rule_name="Message Content Anomaly",
+        severity="MEDIUM",
+        matched=True,
+        risk_score=20,
+        indicators=[
+            {
+                "type": "subject_similarity_anomaly",
+                "evidence": {
+                    "available": True,
+                    "max_similarity": 0.21,
+                },
+            }
+        ],
+        details={},
+    )
+
+    assert detection.indicators[0]["type"] == (
+        "subject_similarity_anomaly"
+    )
+    assert detection.indicators[0]["evidence"]["max_similarity"] == 0.21

@@ -10,6 +10,7 @@ from src.api.models import (
     EmailAnalysisResponse,
     IdentityResponse,
     InfrastructureResponse,
+    PersistedDetectionResponse,
 )
 
 
@@ -183,3 +184,58 @@ def test_analysis_summary_response_accepts_email_sent_at():
     )
 
     assert response.email_sent_at == email_sent_at
+
+
+def test_detection_response_accepts_structured_indicators():
+    """Test that detection response accepts structured rule indicators."""
+
+    response = DetectionResponse(
+        rule_id="BEC-008",
+        rule_name="Message Content Anomaly",
+        severity="MEDIUM",
+        matched=True,
+        risk_score=20,
+        indicators=[
+            {
+                "type": "subject_similarity_anomaly",
+                "evidence": {
+                    "available": True,
+                    "max_similarity": 0.21,
+                },
+            }
+        ],
+    )
+
+    assert response.indicators[0]["type"] == (
+        "subject_similarity_anomaly"
+    )
+    assert response.indicators[0]["evidence"]["max_similarity"] == 0.21
+
+
+def test_persisted_detection_response_accepts_structured_indicators():
+    """Test that persisted detection responses accept structured indicators."""
+
+    response = PersistedDetectionResponse(
+        id=1,
+        rule_id="BEC-008",
+        rule_name="Message Content Anomaly",
+        severity="MEDIUM",
+        matched=True,
+        risk_score=20,
+        indicators=[
+            {
+                "type": "body_length_anomaly",
+                "evidence": {
+                    "available": True,
+                    "current_length": 1200,
+                    "historical_median_length": 400,
+                },
+            }
+        ],
+        details={},
+    )
+
+    assert response.indicators[0]["type"] == (
+        "body_length_anomaly"
+    )
+    assert response.indicators[0]["evidence"]["current_length"] == 1200

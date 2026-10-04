@@ -15,7 +15,9 @@ class DetectionResult:
     severity: str
     matched: bool
     risk_score: int
-    indicators: list[str] = field(default_factory=list)
+    indicators: list[str | dict[str, Any]] = field(
+        default_factory=list
+    )
     details: dict[str, Any] = field(
         default_factory=dict
     )

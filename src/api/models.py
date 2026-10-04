@@ -50,7 +50,7 @@ class DetectionResponse(BaseModel):
     severity: str
     matched: bool
     risk_score: int
-    indicators: list[str] = Field(
+    indicators: list[str | dict[str, Any]] = Field(
         default_factory=list,
     )
 
@@ -112,7 +112,7 @@ class PersistedDetectionResponse(BaseModel):
     severity: str
     matched: bool
     risk_score: int
-    indicators: list[str] = Field(
+    indicators: list[str | dict[str, Any]] = Field(
         default_factory=list,
     )
     details: dict[str, Any] = Field(
