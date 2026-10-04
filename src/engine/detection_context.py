@@ -23,6 +23,9 @@ class DetectionContext:
     recipients: list[str] = field(
         default_factory=list
     )
+    attachments: list[dict[str, Any]] = field(
+        default_factory=list
+    )
     known_behavior: dict[str, Any] = field(
         default_factory=dict
     )

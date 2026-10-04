@@ -115,3 +115,60 @@ def test_detection_context_stores_historical_observations():
 
     assert context.historical_observations == historical_observations
     assert len(context.historical_observations) == 2
+
+
+def test_detection_context_stores_attachment_metadata():
+    """Test that detection context stores attachment metadata."""
+
+    attachments = [
+        {
+            "filename": "invoice.pdf",
+            "content_type": "application/pdf",
+            "size_bytes": 9,
+        }
+    ]
+
+    context = DetectionContext(
+        email_data={
+            "subject": "Invoice Update",
+        },
+        identity={
+            "email_address": "bob@supplier.com",
+            "domain": "supplier.com",
+        },
+        participants=[
+            "alice@company.com",
+            "bob@supplier.com",
+        ],
+        authentication={
+            "spf": "pass",
+            "dkim": "pass",
+            "dmarc": "pass",
+        },
+        infrastructure={
+            "hosts": [
+                "mail.supplier.com",
+            ],
+            "ip_addresses": [
+                "192.0.2.10",
+            ],
+        },
+        known_domain="supplier.com",
+        known_display_name="Bob Supplier",
+        known_participants=[
+            "alice@company.com",
+            "bob@supplier.com",
+        ],
+        recipients=[
+            "alice@company.com",
+        ],
+        attachments=attachments,
+        known_hosts=[
+            "mail.supplier.com",
+        ],
+        known_ip_addresses=[
+            "192.0.2.10",
+        ],
+    )
+
+    assert context.attachments == attachments

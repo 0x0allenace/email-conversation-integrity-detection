@@ -481,3 +481,52 @@ def test_detection_engine_extracts_recipients_from_to_and_cc():
 
     assert "Bob Supplier <bob@supplier.com>" not in result["recipients"]
     assert "Attacker <attacker@example.com>" not in result["recipients"]
+
+
+def test_detection_engine_passes_attachment_metadata_to_context():
+    """Test that parsed attachment metadata reaches detection context."""
+
+    engine = DetectionEngine()
+
+    captured = {}
+
+    class ContextCaptureRule:
+        def evaluate(self, context):
+            captured["attachments"] = context.attachments
+
+            return {
+                "rule_id": "TEST-CONTEXT",
+                "rule_name": "Context Capture",
+                "severity": "LOW",
+                "matched": False,
+                "indicators": [],
+            }
+
+    engine.rules = [ContextCaptureRule()]
+
+    result = engine.analyze(
+        str(
+            PROJECT_ROOT
+            / "samples"
+            / "attachments"
+            / "attachment-conversation.eml"
+        ),
+        known_domain="company.com",
+        known_display_name="Alice Johnson",
+        known_participants=[
+            "alice@company.com",
+            "bob@company.com",
+        ],
+        known_hosts=[],
+        known_ip_addresses=[],
+    )
+
+    assert captured["attachments"] == [
+        {
+            "filename": "invoice.pdf",
+            "content_type": "application/pdf",
+            "size_bytes": 9,
+        }
+    ]
+
+    assert result["email"]["attachment_count"] == 1

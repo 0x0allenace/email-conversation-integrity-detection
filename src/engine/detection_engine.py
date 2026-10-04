@@ -90,6 +90,7 @@ class DetectionEngine:
             identity=identity,
             participants=current_participants,
             recipients=current_recipients,
+            attachments=email_data.get("attachments", []),
             authentication=authentication_results,
             infrastructure=infrastructure,
             known_domain=known_domain,
