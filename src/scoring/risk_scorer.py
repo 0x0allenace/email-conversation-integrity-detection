@@ -19,6 +19,7 @@ class RiskScorer:
         infrastructure_anomaly: bool = False,
         thread_reuse_anomaly: bool = False,
         behavioral_anomaly: bool = False,
+        content_anomaly: bool = False,
     ) -> int:
         """Calculate a risk score from detection indicators."""
 
@@ -46,6 +47,9 @@ class RiskScorer:
             score += 20
 
         if behavioral_anomaly:
+            score += 20
+
+        if content_anomaly:
             score += 20
 
         return min(score, 100)
@@ -117,6 +121,12 @@ class RiskScorer:
             return self.score(
                 rule_matched=detection["matched"],
                 behavioral_anomaly=detection["matched"],
+            )
+
+        if rule_id == "BEC-008":
+            return self.score(
+                rule_matched=detection["matched"],
+                content_anomaly=detection["matched"],
             )
 
         return 0

@@ -106,3 +106,52 @@ def test_behavioral_anomaly_combines_with_other_indicators():
         unexpected_participant=True,
         behavioral_anomaly=True,
     ) == 50
+
+
+def test_content_anomaly_adds_risk():
+    """A content anomaly should add 20 risk points."""
+
+    scorer = RiskScorer()
+
+    assert scorer.score(
+        rule_matched=True,
+        content_anomaly=True,
+    ) == 20
+
+
+def test_content_anomaly_combines_with_other_indicators():
+    """Content anomaly should combine with other risk indicators."""
+
+    scorer = RiskScorer()
+
+    assert scorer.score(
+        rule_matched=True,
+        unexpected_participant=True,
+        content_anomaly=True,
+    ) == 50
+
+
+def test_bec_008_matched_detection_gets_content_risk():
+    """A matched BEC-008 detection should receive 20 risk points."""
+
+    scorer = RiskScorer()
+
+    detection = {
+        "rule_id": "BEC-008",
+        "matched": True,
+    }
+
+    assert scorer.score_detection(detection) == 20
+
+
+def test_bec_008_unmatched_detection_has_zero_risk():
+    """An unmatched BEC-008 detection should have zero risk."""
+
+    scorer = RiskScorer()
+
+    detection = {
+        "rule_id": "BEC-008",
+        "matched": False,
+    }
+
+    assert scorer.score_detection(detection) == 0
