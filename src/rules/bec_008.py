@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from statistics import median
 from typing import Any
 
 from src.engine.detection_context import DetectionContext
@@ -49,6 +50,11 @@ class MessageContentAnomalyRule(DetectionRule):
             historical_observations,
         )
 
+        attachment_size_analysis = self._calculate_attachment_size_anomaly(
+            context.attachments,
+            historical_observations,
+        )
+
         subject_anomaly = self._is_subject_similarity_anomaly(
             subject_analysis,
         )
@@ -63,6 +69,10 @@ class MessageContentAnomalyRule(DetectionRule):
 
         attachment_anomaly = self._is_attachment_novelty_anomaly(
             attachment_analysis,
+        )
+
+        attachment_size_anomaly = self._is_attachment_size_anomaly(
+            attachment_size_analysis,
         )
 
         indicators: list[dict[str, Any]] = []
@@ -96,6 +106,14 @@ class MessageContentAnomalyRule(DetectionRule):
                 {
                     "type": "attachment_novelty_anomaly",
                     "evidence": attachment_analysis,
+                }
+            )
+
+        if attachment_size_anomaly:
+            indicators.append(
+                {
+                    "type": "attachment_size_anomaly",
+                    "evidence": attachment_size_analysis,
                 }
             )
 
@@ -402,6 +420,122 @@ class MessageContentAnomalyRule(DetectionRule):
             return False
 
         return bool(analysis.get("novel_filenames"))
+
+    def _calculate_attachment_size_anomaly(
+        self,
+        current_attachments: list[dict[str, Any]],
+        historical_observations: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Compare attachment sizes against per-filename historical baselines."""
+
+        historical_sizes: dict[str, list[float]] = {}
+
+        for observation in historical_observations:
+            attachments = observation.get("attachments")
+
+            if not isinstance(attachments, list):
+                continue
+
+            for attachment in attachments:
+                if not isinstance(attachment, dict):
+                    continue
+
+                filename = self._normalize_attachment_filename(
+                    attachment.get("filename")
+                )
+
+                size = attachment.get("size_bytes")
+
+                if (
+                    not filename
+                    or isinstance(size, bool)
+                    or not isinstance(size, (int, float))
+                ):
+                    continue
+
+                historical_sizes.setdefault(
+                    filename,
+                    [],
+                ).append(float(size))
+
+        current_sizes: list[dict[str, Any]] = []
+        anomalies: list[dict[str, Any]] = []
+
+        for attachment in current_attachments:
+            if not isinstance(attachment, dict):
+                continue
+
+            filename = self._normalize_attachment_filename(
+                attachment.get("filename")
+            )
+
+            size = attachment.get("size_bytes")
+
+            if (
+                not filename
+                or isinstance(size, bool)
+                or not isinstance(size, (int, float))
+            ):
+                continue
+
+            current_sizes.append(
+                {
+                    "filename": filename,
+                    "size_bytes": size,
+                }
+            )
+
+            sizes = historical_sizes.get(filename, [])
+
+            if len(sizes) < self.MIN_HISTORICAL_OBSERVATIONS:
+                continue
+
+            historical_median_size = median(sizes)
+
+            if historical_median_size == 0:
+                is_anomalous = size > 0
+            else:
+                upper_bound = (
+                    historical_median_size
+                    * self.BODY_LENGTH_RATIO_THRESHOLD
+                )
+
+                lower_bound = (
+                    historical_median_size
+                    / self.BODY_LENGTH_RATIO_THRESHOLD
+                )
+
+                is_anomalous = (
+                    size > upper_bound
+                    or size < lower_bound
+                )
+
+            if is_anomalous:
+                anomalies.append(
+                    {
+                        "filename": filename,
+                        "current_size_bytes": size,
+                        "historical_observation_count": len(sizes),
+                        "historical_median_size_bytes": historical_median_size,
+                    }
+                )
+
+        return {
+            "available": bool(historical_sizes),
+            "current_attachments": current_sizes,
+            "anomalies": anomalies,
+        }
+
+    @staticmethod
+    def _is_attachment_size_anomaly(
+        analysis: dict[str, Any],
+    ) -> bool:
+        """Determine whether attachment size is historically anomalous."""
+
+        if not analysis.get("available"):
+            return False
+
+        return bool(analysis.get("anomalies"))
 
     def _is_body_length_anomaly(
         self,
