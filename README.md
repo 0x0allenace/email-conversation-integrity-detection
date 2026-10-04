@@ -679,11 +679,12 @@ Detects suspicious differences between the current message content and historica
 
 The current implementation uses deterministic text comparison rather than machine learning.
 
-BEC-008 evaluates three independent content signals:
+BEC-008 evaluates four independent content signals:
 
 - Subject similarity
 - Body similarity
 - Body length
+- Attachment filename novelty
 
 Historical observations must contain sufficient valid subject/body data before content comparison is performed.
 
@@ -768,9 +769,38 @@ Indicator:
 
 A zero historical median is handled separately so that a non-empty current body can still be identified as anomalous.
 
+#### Attachment Filename Novelty
+
+BEC-008 compares the filenames of current attachments against filenames observed in qualifying historical observations.
+
+Attachment filenames are normalized before comparison. Normalization includes:
+
+- Lowercasing
+- Trimming leading and trailing whitespace
+- Collapsing internal whitespace
+
+A current attachment filename is considered novel when it has not been observed in the historical attachment baseline.
+
+Attachment filename novelty analysis requires a minimum of 3 historical observations that contain attachment metadata. Historical observations without an `attachments` field are not treated as explicit no-attachment observations and are excluded from the attachment baseline.
+
+```text
+Historical attachment filenames:
+  invoice.pdf
+  invoice.pdf
+  invoice.pdf
+
+Observed:
+  bank-details.pdf
+
+Indicator:
+  - Attachment filename is novel relative to the historical baseline
+```
+
+> The current implementation analyzes attachment metadata only. It does not inspect attachment contents or perform malware analysis.
+
 #### Multiple Content Anomalies
 
-BEC-008 evaluates the subject, body, and body-length signals independently.
+BEC-008 evaluates the subject, body, body-length, and attachment filename signals independently.
 
 A single message may therefore produce multiple content indicators:
 
@@ -808,10 +838,11 @@ BEC-008 currently analyzes:
 - Historical subject similarity
 - Historical body similarity
 - Historical body length
+- Attachment filename novelty
 
-Attachments are currently outside the scope of BEC-008.
+Attachment analysis is currently limited to filename novelty based on historical attachment metadata.
 
-Future content analysis may incorporate richer semantic or attachment-aware techniques.
+Future content analysis may incorporate richer semantic analysis, attachment type analysis, attachment size analysis, and attachment-content inspection.
 
 ---
 
@@ -1303,7 +1334,7 @@ The project follows incremental development with focused tests followed by full 
 
 > BEC-007 has an operational deterministic implementation, but behavioral detection expansion remains in progress as additional historical communication signals are added and validated.
 
-> BEC-008 has an operational deterministic implementation covering subject similarity, body similarity, and body-length anomalies. More advanced semantic and attachment-aware content analysis remains future work.
+> BEC-008 has an operational deterministic implementation covering subject similarity, body similarity, body-length anomalies, and attachment filename novelty. More advanced semantic and attachment-aware content analysis remains future work.
 
 ---
 
@@ -1496,7 +1527,7 @@ The current MVP has several limitations:
 - SPF, DKIM, and DMARC analysis depends on authentication information available in the analyzed message.
 - Infrastructure analysis is currently based on observed hosts and IP addresses.
 - Sender infrastructure reputation is not currently implemented.
-- Attachments are currently outside the scope of BEC-008.
+- BEC-008 attachment analysis is currently limited to filename novelty; attachment contents are not inspected.
 - Machine-learning-based anomaly detection has not yet been integrated into the production detection path.
 - Historical baseline poisoning is a potential risk if untrusted observations are introduced into the baseline.
 - Detection scores are explainable indicators, not definitive proof of compromise.
