@@ -4,9 +4,9 @@
 
 Email Conversation Integrity Detection uses a layered and explainable detection methodology.
 
-The system compares an analyzed email against a supplied baseline representing known sender identity, participants, infrastructure, and communication behavior. Where historical sender observations are available, the system can also compare the current message against previously observed communication behavior.
+The system compares an analyzed email against a supplied baseline representing known sender identity, participants, infrastructure, and communication behavior. Where historical sender observations are available, the system can also compare the current message against previously observed communication behavior and historical message content.
 
-The objective is to identify inconsistencies that may indicate Business Email Compromise (BEC), impersonation, conversation hijacking, or abnormal communication behavior.
+The objective is to identify inconsistencies that may indicate Business Email Compromise (BEC), impersonation, conversation hijacking, abnormal communication behavior, or suspicious changes in message content.
 
 The methodology prioritizes deterministic, explainable detection rules before statistical or machine-learning-based anomaly detection.
 
@@ -40,6 +40,15 @@ Authentication   Infrastructure
               └── Historical Sender Observations
               │
               ▼
+       Message Content Analysis
+              │
+              ├── Historical Subject Patterns
+              │
+              ├── Historical Body Patterns
+              │
+              └── Historical Body Length
+              │
+              ▼
        Detection Rules
               │
               ▼
@@ -68,11 +77,13 @@ Examples include:
 - Known IP addresses
 - Known communication behavior
 
+Historical observations can provide additional evidence for behavioral and message-content analysis.
+
 The baseline should represent legitimate communication patterns as accurately as possible.
 
-Where persisted historical observations are available, they provide an additional evidence source for behavioral analysis.
+Where persisted historical observations are available, they provide an additional evidence source for behavioral and content analysis.
 
-> Poor or incomplete baseline information can produce false positives or reduce the amount of behavioral evidence available to the detection engine.
+> Poor or incomplete baseline information can produce false positives or reduce the amount of behavioral and content evidence available to the detection engine.
 
 ---
 
@@ -213,10 +224,8 @@ The observed hour is extracted from the parsed email `Date` header.
 ```text
 Established behavior:
   Hours: 08:00–17:00
-
 Observed:
   02:30
-
 Indicator:
   - Message sent outside established communication hours
 ```
@@ -306,7 +315,6 @@ Historical sending hours:
   09
   10
   14
-
 Historical observed range:
   09:00–14:00
 ```
@@ -325,13 +333,10 @@ Historical sending hours:
   09:00
   10:00
   14:00
-
 Historical range:
   09:00–14:00
-
 Current message:
   03:30
-
 Indicator:
   - Message sent outside historically observed communication hours
 ```
@@ -397,10 +402,8 @@ Recipient frequency is calculated from qualifying historical observations contai
 ```text
 Historical observations:
   10 messages
-
 Recipient:
   finance@company.com
-
 Historical frequency:
   Appeared in 1 of 10 messages
   Frequency: 10%
@@ -413,7 +416,6 @@ Recipient frequency is evaluated separately from the unseen-recipient signal:
 ```text
 Unseen recipient:
   Recipient has never appeared historically.
-
 Low-frequency recipient:
   Recipient is known historically but appears substantially less often.
 ```
@@ -446,15 +448,12 @@ A minimum of three qualifying historical observations is required before recipie
 
 ```text
 Historical communication:
-
 Message 1:
   To: alice@example.com
   Cc: finance@example.com
-
 Message 2:
   To: alice@example.com
   Cc: finance@example.com
-
 Message 3:
   To: alice@example.com
   Cc: finance@example.com
@@ -535,7 +534,6 @@ If a recipient appears in both `To` and `Cc`, the `To` role takes precedence so 
 To:
   alice@company.com
   bob@company.com
-
 Cc:
   finance@company.com
   legal@company.com
@@ -608,10 +606,8 @@ Established behavior:
   Hours:             08:00–17:00
   Days:              Monday–Friday
   Timezone offsets:  +0100
-
 Observed:
   Sunday 02:30 -0500
-
 Indicators:
   - Message sent outside established communication hours
   - Message sent outside established communication days
@@ -623,10 +619,8 @@ Historical observations can provide additional indicators:
 ```text
 Historical range:
   09:00–14:00
-
 Observed:
   02:30
-
 Indicator:
   - Message sent outside historically observed communication hours
 ```
@@ -636,10 +630,8 @@ Recipient behavior can provide additional indicators:
 ```text
 Historical:
   alice@example.com + finance@example.com
-
 Observed:
   alice@example.com + legal@example.com
-
 Indicators:
   - Message contains a historically unusual recipient relationship
 ```
@@ -650,11 +642,9 @@ A role anomaly can provide additional evidence:
 Historical:
   To: alice@example.com
   Cc: finance@example.com
-
 Observed:
   To: finance@example.com
   Cc: alice@example.com
-
 Indicator:
   - Message contains a historically unusual recipient role relationship
 ```
@@ -725,8 +715,6 @@ Future behavioral analysis may include:
 
 - Response time
 - Participant count
-- Subject similarity
-- Body similarity
 - Attachment frequency
 - Infrastructure frequency
 - Domain similarity
@@ -735,7 +723,442 @@ Future behavioral analysis may include:
 
 These signals are not currently implemented by BEC-007.
 
+> Subject similarity and body similarity are implemented separately by BEC-008 and are therefore not part of the future BEC-007 behavioral scope.
+
 > Future behavioral signals should only be introduced when the system has a clearly defined observation source, sufficient data, and a clearly defined baseline or statistical methodology for that signal.
+
+---
+
+## BEC-008 — Message Content Anomaly
+
+BEC-008 evaluates whether the content of a current message differs substantially from the sender's established historical message-content patterns.
+
+The rule focuses on deterministic comparison of:
+
+- Subject similarity
+- Body similarity
+- Body length
+
+BEC-008 uses historical message observations supplied by the application layer. The rule does not directly access the database and does not require machine learning or external natural-language-processing services.
+
+The purpose is to identify substantial changes in message content that may provide supporting evidence of conversation manipulation, impersonation, or other suspicious communication activity.
+
+> BEC-008 is a content anomaly detector, not a semantic classifier. A content difference does not establish malicious intent by itself.
+
+### Historical Content Baseline
+
+Historical message observations are retrieved by the application service and passed to the detection engine as structured data.
+
+The flow is:
+
+```text
+Persisted Analysis Records
+          │
+          ▼
+Analysis Repository
+          │
+          ▼
+Analysis Service
+          │
+          ▼
+Detection Engine
+          │
+          ▼
+DetectionContext
+          │
+          ▼
+BEC-008
+```
+
+The detection rule remains independent of direct database access.
+
+A minimum of three valid historical observations is required before BEC-008 performs historical content analysis.
+
+Historical observations must contain usable subject or body content for the corresponding signal to participate in that signal's analysis. This means:
+
+- Subject analysis requires at least three valid historical subjects.
+- Body similarity analysis requires at least three valid historical bodies.
+- Body-length analysis requires at least three valid historical body lengths.
+
+Signals are evaluated independently.
+
+### Subject Normalization
+
+Before subject comparison, BEC-008 normalizes the current and historical subjects.
+
+Normalization includes:
+
+1. Converting the subject to lowercase.
+2. Removing repeated `Re:`, `Fw:`, and `Fwd:` prefixes.
+3. Collapsing repeated whitespace.
+4. Removing unnecessary surrounding whitespace.
+
+**For example:**
+
+```text
+Original:
+  Re: Re: Fwd: Quarterly Supplier Review
+Normalized:
+  quarterly supplier review
+```
+
+The purpose is to avoid treating ordinary reply or forwarding prefixes as meaningful content differences.
+
+### Subject Similarity
+
+BEC-008 compares the normalized current subject against normalized historical subjects.
+
+The current implementation uses Python's standard-library `difflib.SequenceMatcher`.
+
+The resulting similarity value is represented between:
+
+```text
+0.0 = no meaningful sequence similarity
+1.0 = identical sequence
+```
+
+The current subject is compared against the available historical subjects and the strongest historical similarity is used as the comparison evidence.
+
+The current subject similarity threshold is:
+
+```text
+0.50
+```
+
+If the strongest historical similarity is below 0.50, the subject can be considered anomalous.
+
+**Example:**
+
+```text
+Historical subjects:
+  quarterly supplier review
+  supplier review update
+  supplier contract review
+Current subject:
+  urgent payment instruction
+Similarity:
+  Below established threshold
+Indicator:
+  - Message subject differs substantially from historical message patterns
+```
+
+The threshold is deterministic and currently configured as:
+
+```text
+SUBJECT_SIMILARITY_THRESHOLD = 0.50
+```
+
+### Body Normalization
+
+Before body comparison, BEC-008 normalizes the current and historical message bodies.
+
+Normalization includes:
+
+1. Converting content to lowercase.
+2. Collapsing repeated whitespace.
+3. Removing unnecessary surrounding whitespace.
+
+The current implementation focuses on normalized textual content. It does not perform:
+
+- Semantic NLP
+- Embedding-based similarity
+- External AI classification
+- Attachment analysis
+- Malware analysis
+
+**For example:**
+
+```text
+Original:
+  Hello Team,
+  Please review the attached supplier invoice.
+Normalized:
+  hello team, please review the attached supplier invoice.
+```
+
+### Body Similarity
+
+BEC-008 compares the normalized current body against normalized historical message bodies.
+
+The comparison uses Python's standard-library `difflib.SequenceMatcher`.
+
+The strongest historical similarity is used as the comparison evidence.
+
+The current body similarity threshold is:
+
+```text
+0.50
+```
+
+If the strongest historical similarity is below 0.50, the body can be considered anomalous.
+
+**Example:**
+
+```text
+Historical message pattern:
+  Please review the supplier invoice and confirm the
+  expected payment date.
+Current message:
+  Please urgently change the beneficiary account and
+  process the payment immediately.
+Similarity:
+  Below established threshold
+Indicator:
+  - Message body differs substantially from historical message patterns
+```
+
+The threshold is deterministic and currently configured as:
+
+```text
+BODY_SIMILARITY_THRESHOLD = 0.50
+```
+
+### Body Length Analysis
+
+BEC-008 also compares the current body length against the historical body-length baseline.
+
+Historical body lengths are calculated from the normalized body content.
+
+The historical baseline uses the median body length.
+
+The current implementation considers the current body anomalous when its length is:
+
+- Greater than two times the historical median, or
+- Less than one-half of the historical median.
+
+The current threshold is:
+
+```text
+BODY_LENGTH_RATIO_THRESHOLD = 2.0
+```
+
+**Example:**
+
+```text
+Historical body lengths:
+  420
+  450
+  500
+Historical median:
+  450
+Upper threshold:
+  900
+Lower threshold:
+  225
+```
+
+A current body length of:
+
+```text
+1200
+```
+
+would therefore produce a body-length anomaly because it exceeds twice the historical median.
+
+Similarly, a current body length of:
+
+```text
+150
+```
+
+would produce an anomaly because it is less than half the historical median.
+
+### Zero-Length Historical Bodies
+
+BEC-008 handles a zero historical median explicitly.
+
+When the historical median body length is zero:
+
+```text
+Historical median:
+  0
+```
+
+a current body with content can be considered anomalous. This prevents the ratio comparison from attempting to divide by zero.
+
+A current empty body remains consistent with a zero-length historical baseline.
+
+### Multiple Content Anomalies
+
+BEC-008 evaluates subject, body similarity, and body length independently.
+
+A single message can therefore produce multiple content indicators.
+
+**For example:**
+
+```text
+Historical message pattern:
+Subject:
+  Quarterly supplier review
+Body:
+  Please review the supplier invoice and confirm
+  the expected payment date.
+Current message:
+Subject:
+  URGENT PAYMENT CHANGE
+Body:
+  Please immediately update the beneficiary account
+  and process the outstanding payment today.
+  This request requires urgent handling because
+  the normal payment process has changed.
+Indicators:
+  - Message subject differs substantially from historical message patterns
+  - Message body differs substantially from historical message patterns
+  - Message body length differs substantially from historical message patterns
+```
+
+Each signal is evaluated independently so that the resulting detection preserves the evidence that contributed to the anomaly.
+
+### Structured Content Evidence
+
+BEC-008 exposes structured evidence rather than relying only on a plain-text indicator.
+
+The structured evidence can identify:
+
+- Signal type
+- Current normalized subject
+- Historical subject comparison
+- Subject similarity
+- Subject similarity threshold
+- Current normalized body
+- Historical body comparison
+- Body similarity
+- Body similarity threshold
+- Current body length
+- Historical body lengths
+- Historical median body length
+- Body-length threshold
+- Historical observation count
+
+This allows downstream components such as the API, persistence layer, and SIEM integration to preserve more detailed investigation evidence.
+
+A conceptual example is:
+
+```text
+Rule:
+  BEC-008 — Message Content Anomaly
+Signal:
+  subject_similarity
+Evidence:
+  Current subject:
+    urgent payment instruction
+  Best historical similarity:
+    0.31
+  Threshold:
+    0.50
+Indicator:
+  Message subject differs substantially from historical message patterns
+```
+
+Another signal may expose:
+
+```text
+Signal:
+  body_length
+Evidence:
+  Current body length:
+    1200
+  Historical median:
+    450
+  Threshold:
+    2.0x
+Indicator:
+  Message body length differs substantially from historical message patterns
+```
+
+The exact structured evidence returned by the implementation may contain additional fields as the detection model evolves.
+
+### Content Baseline Requirements
+
+BEC-008 requires sufficient historical observations before performing content analysis.
+
+The current minimum is:
+
+```text
+MIN_HISTORICAL_OBSERVATIONS = 3
+```
+
+This minimum is applied independently to the available content signals.
+
+**For example:**
+
+```text
+Historical observations:
+  2
+Result:
+  Insufficient historical content baseline
+```
+
+No historical content anomaly should be inferred from fewer than the required minimum observations.
+
+With sufficient historical observations:
+
+```text
+Historical observations:
+  3+
+Result:
+  Historical content comparison available
+```
+
+This prevents a single previous message from being treated as a reliable representation of a sender's established communication style.
+
+### Historical Content Observation Source
+
+Historical content observations are supplied by the application layer.
+
+The detection rule does not query PostgreSQL directly.
+
+This separation follows the same architecture used by BEC-007:
+
+```text
+Database
+   │
+   ▼
+Repository
+   │
+   ▼
+Analysis Service
+   │
+   ▼
+Historical Observations
+   │
+   ▼
+Detection Context
+   │
+   ▼
+BEC-008
+```
+
+This keeps the detection rule deterministic, testable, and independent of persistence implementation details.
+
+### Attachments
+
+Attachment analysis is currently outside the scope of BEC-008.
+
+The current rule does not evaluate:
+
+- Attachment names
+- Attachment types
+- Attachment hashes
+- Attachment frequency
+- Attachment content
+- Malware indicators
+- Archive contents
+
+Attachment-based analysis may be introduced as a separate detection capability in the future.
+
+### Current Content Scope
+
+The currently implemented BEC-008 content signals are:
+
+| Signal | Source | Status |
+|---|---|---|
+| Subject similarity anomaly | Historical message observations | Implemented |
+| Body similarity anomaly | Historical message observations | Implemented |
+| Body length anomaly | Historical message observations | Implemented |
+| Attachment analysis | Historical message observations | Out of scope |
+
+These signals are intentionally deterministic and explainable.
 
 ---
 
@@ -751,6 +1174,8 @@ Potential indicators include:
 - Infrastructure changes
 - Authentication anomalies
 - Conversation structure inconsistencies
+- Behavioral anomalies
+- Message content anomalies
 
 The objective is not to rely on one indicator but to identify combinations of inconsistencies that may indicate that an established conversation has been manipulated.
 
@@ -774,6 +1199,22 @@ Details
 
 This structure allows analysts to understand which detection rule matched and why.
 
+For BEC-007 and BEC-008, Indicators may contain both human-readable strings and structured evidence objects.
+
+**For example:**
+
+```text
+Rule:
+  BEC-008 — Message Content Anomaly
+Indicators:
+  - Message subject differs substantially from historical message patterns
+Structured evidence:
+  - Signal type
+  - Similarity value
+  - Threshold
+  - Historical comparison data
+```
+
 ---
 
 ## Risk Scoring Methodology
@@ -783,6 +1224,8 @@ Risk scores are generated from observable indicators associated with individual 
 The score is intended to communicate the relative contribution of a detection to the overall analysis.
 
 Each individual detection score is capped at 100. The combined analysis risk score is calculated from matched detections.
+
+BEC-008 contributes to the risk score when the rule matches and a content anomaly is identified.
 
 > The score should not be treated as a standalone verdict.
 
@@ -795,6 +1238,7 @@ Analysts should inspect:
 - Sender identity
 - Conversation context
 - Behavioral evidence
+- Message content evidence
 
 ---
 
@@ -830,6 +1274,20 @@ Indicator:
 - Message sent outside historically observed communication hours
 ```
 
+A content detection can expose the historical comparison evidence:
+
+```text
+Rule:                 BEC-008 — Message Content Anomaly
+Signal:               Subject similarity
+Current subject:     urgent payment instruction
+Best historical match:
+  quarterly supplier review
+Similarity:           0.31
+Threshold:            0.50
+Indicator:
+- Message subject differs substantially from historical message patterns
+```
+
 This allows a SOC analyst to investigate the underlying evidence instead of relying only on a risk score.
 
 ---
@@ -852,10 +1310,15 @@ Examples include:
 - Legitimate changes in recipient relationships
 - Legitimate changes between `To` and `Cc` roles
 - One-off recipients or low-frequency recipients
+- Legitimate changes to message subjects
+- Legitimate changes to message body content
+- Short or unusually detailed messages
+- New business processes that produce different message templates
+- Legitimate automated messages with different content patterns
 
 For this reason, detections should be interpreted using the complete analysis context.
 
-Historical behavioral anomalies should be treated as investigation indicators rather than proof of compromise.
+Historical behavioral and content anomalies should be treated as investigation indicators rather than proof of compromise.
 
 ---
 
@@ -870,6 +1333,9 @@ The system may fail to identify attacks when:
 - Authentication information is missing
 - Infrastructure information cannot be established
 - Communication behavior closely resembles normal behavior
+- Malicious content closely resembles legitimate historical content
+- Historical message content is too limited to establish a reliable baseline
+- The attacker deliberately reproduces the sender's established communication patterns
 
 The system therefore treats detection as an investigation aid rather than a guarantee of malicious activity.
 
@@ -889,3 +1355,15 @@ Potential models include:
 The ML layer will remain separate from the deterministic detection engine so that rule-based and behavioral approaches can be evaluated independently.
 
 Future statistical analysis should build on clearly defined historical observation sources and should not replace the existing explainable detection evidence.
+
+**Potential future content-analysis capabilities may include:**
+
+- Semantic similarity
+- Embedding-based message comparison
+- Attachment frequency analysis
+- Attachment metadata analysis
+- Communication-template analysis
+- Topic or intent deviation
+- Language-pattern analysis
+
+> These capabilities are not currently part of BEC-008 and should only be introduced when their observation source, baseline, methodology, and explainability requirements are clearly defined.

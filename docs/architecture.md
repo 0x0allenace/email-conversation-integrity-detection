@@ -2,9 +2,9 @@
 
 ## Overview
 
-Email Conversation Integrity Detection is a layered Blue Team detection engine designed to analyze email messages for indicators of Business Email Compromise (BEC), sender impersonation, conversation manipulation, and suspicious communication behavior.
+Email Conversation Integrity Detection is a layered Blue Team detection engine designed to analyze email messages for indicators of Business Email Compromise (BEC), sender impersonation, conversation manipulation, suspicious communication behavior, and message content anomalies.
 
-The architecture separates email parsing, identity analysis, authentication analysis, infrastructure analysis, detection logic, risk scoring, persistence, and SIEM integration.
+The architecture separates email parsing, identity analysis, authentication analysis, infrastructure analysis, conversation analysis, detection logic, risk scoring, persistence, and SIEM integration.
 
 The system is designed to remain explainable and extensible as additional detection and behavioral analysis capabilities are introduced.
 
@@ -35,6 +35,12 @@ The system is designed to remain explainable and extensible as additional detect
        └─────┬──────┘ └──────┬───────┘ └──────┬───────┘
              │               │                │
              └───────────────┼────────────────┘
+                             │
+                             ▼
+                    ┌──────────────────┐
+                    │ Conversation     │
+                    │    Analysis      │
+                    └────────┬─────────┘
                              │
                              ▼
                     ┌──────────────────┐
@@ -92,6 +98,9 @@ The service:
 2. Invokes the detection engine.
 3. Persists analysis results when a database session is provided.
 4. Dispatches matched detection results to the configured SIEM service when enabled.
+5. Retrieves historical observations required by behavioral and message-content detection rules.
+
+Historical observations are supplied to the detection engine as structured data. Detection rules remain independent of direct database access.
 
 ### Email Parser
 
@@ -180,6 +189,7 @@ The detection engine coordinates the individual detection rules and produces str
 - BEC-005 — Sender Infrastructure Anomaly
 - BEC-006 — Conversation Hijacking
 - BEC-007 — Behavioral Communication Anomaly
+- BEC-008 — Message Content Anomaly
 
 Each detection produces structured information including:
 
@@ -191,6 +201,50 @@ Each detection produces structured information including:
 - Indicators
 - Details
 
+### Behavioral Analysis
+
+BEC-007 provides deterministic behavioral analysis using explicit behavioral baselines and persisted historical sender observations.
+
+**Current behavioral signals include:**
+
+- Typical sending hour
+- Typical sending day
+- Sender-declared timezone offset
+- Historical sending-hour range
+- Historical sending frequency
+- Historical recipient behavior
+- Historical recipient frequency
+- Historical recipient co-occurrence
+- Historical recipient role relationships
+
+The rule requires sufficient valid historical observations before historical analysis is established.
+
+BEC-007 does not directly access the database. Historical observations are retrieved by the application layer and supplied to the detection engine.
+
+### Message Content Analysis
+
+BEC-008 provides deterministic analysis of message content against an established historical message baseline.
+
+**Current content signals include:**
+
+- Subject similarity anomaly
+- Body similarity anomaly
+- Body length anomaly
+
+BEC-008 requires a minimum of three valid historical observations before the relevant historical content signal is evaluated.
+
+Subject and body similarity use deterministic sequence comparison based on Python's standard-library `difflib.SequenceMatcher`.
+
+**Current thresholds include:**
+
+- Subject similarity threshold: 0.50
+- Body similarity threshold: 0.50
+- Body length ratio threshold: 2.0
+
+BEC-008 is currently focused on message text content. Attachment analysis is outside the current scope.
+
+Like BEC-007, BEC-008 remains independent of direct database access. Historical message observations are supplied to the detection engine as structured data by the application layer.
+
 ### Risk Scoring
 
 Risk scoring is performed after detection analysis.
@@ -201,7 +255,9 @@ The persisted analysis also records the combined risk score from matched detecti
 
 Risk scoring is intended to support investigation rather than replace analyst judgment.
 
-### Database Layer
+---
+
+## Database Layer
 
 PostgreSQL provides persistence for completed analyses.
 
@@ -211,6 +267,8 @@ The current database model contains:
 - `detections`
 
 The analysis record stores the overall analysis result, while individual detection records preserve the rule-level results.
+
+Historical analysis records can also provide observations used by behavioral and message-content detection.
 
 SQLAlchemy is used as the ORM layer.
 
@@ -263,6 +321,8 @@ The event can contain:
 - Conversation context
 - Source
 - Schema version
+
+Structured detection indicators can contain either simple textual evidence or structured evidence objects, allowing rules such as BEC-008 to preserve detailed content-analysis evidence.
 
 ### SIEM Service
 
@@ -352,7 +412,7 @@ The architecture follows these principles:
 Parsing, analysis, detection, scoring, persistence, and SIEM integration remain separate components.
 
 **Explainability**
-Detection results expose the indicators and details that contributed to a detection.
+Detection results expose the indicators and details that contributed to a detection. Structured evidence is preserved when a detection requires more detailed reasoning.
 
 **Extensibility**
 Additional detection rules and SIEM integrations can be added without redesigning the entire application.
@@ -362,3 +422,6 @@ The system is designed for authorized security analysis and controlled environme
 
 **Deterministic First**
 Deterministic detection rules provide the foundation before introducing machine-learning-based behavioral analysis.
+
+**Historical Baseline Analysis**
+Behavioral and message-content anomalies are evaluated against explicitly supplied baselines and persisted historical observations rather than relying on direct database access from individual detection rules.

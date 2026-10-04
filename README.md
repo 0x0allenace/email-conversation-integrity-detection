@@ -4,7 +4,7 @@
 
 An open-source Blue Team detection engine designed to identify suspicious email messages that appear to impersonate, clone, or hijack an established business email conversation.
 
-The project focuses on Business Email Compromise (BEC), email impersonation, conversation hijacking, and sender identity anomalies by analyzing email headers, authentication results, sender identity, conversation participants, infrastructure, and communication behavior.
+The project focuses on Business Email Compromise (BEC), email impersonation, conversation hijacking, sender identity anomalies, abnormal communication behavior, and suspicious message-content patterns by analyzing email headers, authentication results, sender identity, conversation participants, infrastructure, behavioral baselines, and historical message content.
 
 ---
 
@@ -31,7 +31,12 @@ The current implementation provides:
 - Historical recipient frequency analysis
 - Historical recipient co-occurrence analysis
 - Historical recipient role analysis
+- Message content anomaly detection
+- Historical subject similarity analysis
+- Historical body similarity analysis
+- Historical body-length analysis
 - Explainable per-rule risk scoring
+- Structured detection indicators
 - FastAPI API
 - PostgreSQL persistence
 - Docker / Docker Compose deployment
@@ -62,6 +67,8 @@ Business email attacks do not always look like traditional phishing. An attacker
 - Modify communication patterns
 - Use familiar subjects, signatures, and conversation history
 - Alter established recipient relationships or recipient roles
+- Reuse familiar message content in suspicious circumstances
+- Produce unusually long or short messages compared with historical communication
 
 **Example:**
 
@@ -71,6 +78,8 @@ Business email attacks do not always look like traditional phishing. An attacker
 | Suspicious message | `John Smith <john@supp1ier.com>` |
 
 The display name and domain may appear convincing to a human recipient while the underlying identity is different.
+
+Similarly, an attacker attempting to continue an established conversation may reproduce familiar subject lines or message content while introducing other identity, infrastructure, behavioral, or content inconsistencies.
 
 The purpose of Email Conversation Integrity Detection is to identify these inconsistencies automatically and provide an explainable risk assessment that can support SOC investigation.
 
@@ -88,11 +97,14 @@ The purpose of Email Conversation Integrity Detection is to identify these incon
 8. Identify suspicious infrastructure changes.
 9. Detect abnormal communication behavior.
 10. Analyze historical sender and recipient communication patterns.
-11. Generate explainable risk scores.
-12. Produce SOC-friendly detection results.
-13. Normalize detection results into SIEM events.
-14. Integrate detections with SIEM platforms.
-15. Provide an extensible foundation for behavioral anomaly detection.
+11. Analyze historical message-content patterns.
+12. Generate explainable risk scores.
+13. Produce SOC-friendly detection results.
+14. Preserve structured detection evidence.
+15. Normalize detection results into SIEM events.
+16. Integrate detections with SIEM platforms.
+17. Provide an extensible foundation for behavioral and content-based anomaly detection.
+18. Provide a foundation for future machine-learning-based anomaly detection.
 
 ---
 
@@ -211,6 +223,7 @@ The API returns:
 - Infrastructure information
 - Detection results
 - Per-rule risk scores
+- Detection indicators and applicable evidence
 
 ### Retrieve Stored Analyses
 
@@ -285,40 +298,62 @@ FastAPI also provides interactive API documentation when the application is runn
 
 ## Core Detection Concept
 
-The system establishes a baseline from known participants, sender identity, infrastructure, and behavioral information, then compares newly received messages against that baseline.
+The system establishes a baseline from known participants, sender identity, infrastructure, behavioral information, and historical communication data. Newly received messages are then compared against those baselines.
 
 ```text
-                    Incoming Email
-                          │
-                          ▼
-                   Email Parser
-                          │
-                          ▼
-                 Header Extraction
-                          │
-                          ▼
-                 Identity Analysis
-                          │
-          ┌───────────────┼────────────────┐
-          ▼               ▼                ▼
-      Authentication   Infrastructure   Behavior
-          │               │                │
-          └───────────────┼────────────────┘
-                          ▼
-                    Detection Engine
-                          │
-                          ▼
-                     Risk Scoring
-                          │
-                 ┌────────┴────────┐
-                 ▼                 ▼
-             Normal            Suspicious
-                                   │
-                                   ▼
-                         SIEM / SOC Workflow
+                         Incoming Email
+                               │
+                               ▼
+                        Email Parser
+                               │
+                               ▼
+                      Header / Body Extraction
+                               │
+                               ▼
+                       Analysis Context
+                               │
+          ┌────────────────────┼────────────────────┐
+          ▼                    ▼                    ▼
+      Identity           Authentication       Infrastructure
+      Analysis              Analysis             Analysis
+          │                    │                    │
+          └────────────────────┼────────────────────┘
+                               ▼
+                    Conversation / Behavior
+                          / Content Analysis
+                               │
+                               ▼
+                       Detection Engine
+                               │
+                               ▼
+                         Risk Scoring
+                               │
+                    ┌──────────┴──────────┐
+                    ▼                     ▼
+                 Normal               Suspicious
+                                          │
+                                          ▼
+                                SIEM / SOC Workflow
 ```
 
 The detection engine is designed around deterministic, observable indicators so that analysts can investigate the evidence behind each detection.
+
+---
+
+## Detection Rules
+
+The current detection engine contains the following rules:
+
+| Rule | Detection | Severity | Status |
+|---|---|---|---|
+| BEC-001 | Lookalike Domain | HIGH | ✅ Implemented |
+| BEC-002 | Reply-To Mismatch | HIGH | ✅ Implemented |
+| BEC-003 | Thread Participant Anomaly | HIGH | ✅ Implemented |
+| BEC-004 | Authentication Anomaly | HIGH | ✅ Implemented |
+| BEC-005 | Sender Infrastructure Anomaly | MEDIUM | ✅ Implemented |
+| BEC-006 | Conversation Hijacking | HIGH | ✅ Implemented |
+| BEC-007 | Behavioral Communication Anomaly | MEDIUM | ⏳ Expanding |
+| BEC-008 | Message Content Anomaly | MEDIUM | ✅ Implemented |
 
 ---
 
@@ -395,7 +430,7 @@ Identifies unusual communication behavior compared with an established sender or
 
 The current implementation uses deterministic behavioral analysis. It can evaluate both explicitly supplied behavioral baselines and historical observations retrieved for a known sender.
 
-Current behavioral signals include:
+**Current behavioral signals include:**
 
 - Typical sending hours
 - Typical sending days
@@ -417,10 +452,8 @@ The observed hour is extracted from the parsed email `Date` header.
 ```text
 Established behavior:
   Hours: 08:00–17:00
-
 Observed:
   02:30
-
 Indicator:
   - Message sent outside established communication hours
 ```
@@ -446,10 +479,8 @@ The observed weekday is derived from the parsed email `Date` header using Python
 ```text
 Established behavior:
   Days: Monday–Friday
-
 Observed:
   Sunday
-
 Indicator:
   - Message sent outside established communication days
 ```
@@ -470,10 +501,8 @@ The optional `typical_timezone_offsets` baseline represents the UTC offsets decl
 ```text
 Established behavior:
   Timezone offsets: +0100
-
 Observed:
   Date header offset: -0500
-
 Indicator:
   - Message sent from an unexpected timezone offset
 ```
@@ -504,10 +533,8 @@ A message may be considered behaviorally unusual when it occurs at a substantial
 ```text
 Historical behavior:
   Typical interval: 60 minutes
-
 Observed:
   Current interval: 5 minutes
-
 Indicator:
   - Message sent at an unusually high communication frequency
 ```
@@ -530,10 +557,8 @@ Historical recipients:
   alice@company.com
   finance@company.com
   procurement@company.com
-
 Observed:
   hr@company.com
-
 Indicator:
   - Message contains a historically unusual recipient
 ```
@@ -558,11 +583,9 @@ Recipient co-occurrence evaluates whether recipients that appear together in the
 Historical behavior:
   To: alice@company.com
   Cc: finance@company.com
-
 Observed:
   To: alice@company.com
   Cc: hr@company.com
-
 Indicator:
   - Message contains an unusual recipient relationship
 ```
@@ -581,11 +604,9 @@ Recipient role analysis extends recipient co-occurrence analysis by evaluating w
 Historical behavior:
   To: alice@company.com
   Cc: finance@company.com
-
 Observed:
   To: finance@company.com
   Cc: alice@company.com
-
 Indicator:
   - Message contains a historically unusual recipient role relationship
 ```
@@ -610,16 +631,13 @@ Established behavior:
   Hours:             08:00–17:00
   Days:              Monday–Friday
   Timezone offsets:  +0100
-
 Historical behavior:
   Normal recipients:
     alice@company.com
     finance@company.com
-
 Observed:
   Sunday 02:30 -0500
   Recipient relationship differs from historical behavior
-
 Indicators:
   - Message sent outside established communication hours
   - Message sent outside established communication days
@@ -655,6 +673,146 @@ The detection result preserves behavioral evidence used by the rule, including a
 
 > Behavioral signals should only be introduced when the system has a clearly defined observation source or baseline for that signal.
 
+### BEC-008 — Message Content Anomaly
+
+Detects suspicious differences between the current message content and historical messages associated with the same conversation or sender.
+
+The current implementation uses deterministic text comparison rather than machine learning.
+
+BEC-008 evaluates three independent content signals:
+
+- Subject similarity
+- Body similarity
+- Body length
+
+Historical observations must contain sufficient valid subject/body data before content comparison is performed.
+
+The current implementation requires a minimum of 3 qualifying historical observations.
+
+#### Subject Similarity
+
+The current subject is normalized before comparison.
+
+**Normalization includes:**
+
+- Lowercasing
+- Collapsing whitespace
+- Removing repeated `Re:` / `Fw:` / `Fwd:` prefixes
+
+The normalized current subject is compared against historical subjects using Python's standard-library `difflib.SequenceMatcher`.
+
+The current subject is considered anomalous when its maximum similarity to the historical subjects falls below:
+
+```text
+Subject similarity threshold: 0.50
+```
+
+**Example:**
+
+```text
+Historical subjects:
+  Payment confirmation
+  Payment confirmation
+  Payment confirmation
+Observed:
+  Urgent password reset request
+Indicator:
+  - Subject similarity below historical threshold
+```
+
+#### Body Similarity
+
+The message body is normalized before comparison.
+
+**Normalization includes:**
+
+- Lowercasing
+- Collapsing whitespace
+
+The normalized current body is compared with historical message bodies using `SequenceMatcher`.
+
+The current body is considered anomalous when its maximum similarity to the historical bodies falls below:
+
+```text
+Body similarity threshold: 0.50
+```
+
+**Example:**
+
+```text
+Historical body:
+  Please find the attached invoice for this month's services.
+Observed body:
+  Please urgently change the beneficiary account before processing payment.
+Indicator:
+  - Body similarity below historical threshold
+```
+
+#### Body Length Anomaly
+
+BEC-008 also compares the current body length against the median historical body length.
+
+The current implementation considers the body length anomalous when it is:
+
+- More than 2.0x the historical median, or
+- Less than 0.5x the historical median
+
+```text
+Historical median body length:
+  500 characters
+Observed:
+  1500 characters
+Indicator:
+  - Body length differs substantially from historical behavior
+```
+
+A zero historical median is handled separately so that a non-empty current body can still be identified as anomalous.
+
+#### Multiple Content Anomalies
+
+BEC-008 evaluates the subject, body, and body-length signals independently.
+
+A single message may therefore produce multiple content indicators:
+
+```text
+Historical behavior:
+  Similar subject
+  Similar body
+  Typical body length
+Observed:
+  Unrelated subject
+  Unrelated body
+  3x historical median body length
+Indicators:
+  - Subject similarity below historical threshold
+  - Body similarity below historical threshold
+  - Body length differs substantially from historical behavior
+```
+
+The detection result preserves structured evidence for the individual content signals.
+
+#### Historical Content Baseline
+
+BEC-008 uses historical observations supplied to the detection engine.
+
+The historical observations should represent legitimate communication associated with the sender or conversation being evaluated.
+
+> Historical content analysis depends on the quality and representativeness of the historical baseline. A poisoned, incomplete, or unrelated baseline can reduce detection accuracy.
+
+#### Current Scope
+
+BEC-008 currently analyzes:
+
+- Subject text
+- Plain message body content
+- Historical subject similarity
+- Historical body similarity
+- Historical body length
+
+Attachments are currently outside the scope of BEC-008.
+
+Future content analysis may incorporate richer semantic or attachment-aware techniques.
+
 ---
 
 ## Risk Scoring
@@ -667,13 +825,57 @@ Domain mismatch
 Authentication failure
         +
 Unexpected participant
+        +
+Behavioral anomaly
+        +
+Content anomaly
         ↓
 Explainable risk contribution
 ```
 
-The current scoring implementation assigns rule-specific contributions and caps each individual detection score at 100. The persisted analysis also records the combined risk score of matched detections.
+The current scoring implementation assigns rule-specific contributions and caps each individual detection score at 100.
+
+**Current risk contributions include:**
+
+| Indicator | Contribution |
+|---|---|
+| Domain mismatch | +50 |
+| Display name matches known participant | +20 |
+| Authentication failure | +30 |
+| Unexpected participant | +30 |
+| Infrastructure anomaly | +20 |
+| Thread reuse anomaly | +20 |
+| Behavioral anomaly | +20 |
+| Content anomaly | +20 |
+
+The scoring model is rule-aware, so not every indicator contributes to every rule.
 
 > The numerical score should not be treated as a standalone verdict. Detection results should always be investigated using the underlying indicators and evidence.
+
+---
+
+## Structured Detection Evidence
+
+Detection results preserve structured indicators when a rule produces machine-readable evidence.
+
+Indicators may contain either:
+
+- Human-readable detection messages
+- Structured evidence objects
+
+For example, content anomaly evidence can preserve individual measurements rather than only returning a generic detection message.
+
+**This allows downstream components such as:**
+
+- API responses
+- PostgreSQL persistence
+- SIEM event generation
+- SOC dashboards
+- Future analytics
+
+to retain the evidence generated by the detection rule.
+
+The structured indicator model also provides a foundation for future enrichment without requiring the detection engine to flatten all evidence into strings.
 
 ---
 
@@ -717,7 +919,7 @@ The resulting detection is accompanied by the applicable rule, indicators, detai
 
 ## SIEM Integration
 
-The project now includes an application-level SIEM integration layer.
+The project includes an application-level SIEM integration layer.
 
 Detection results can be converted into a normalized `SIEMEvent` before being dispatched to a configured SIEM provider.
 
@@ -843,6 +1045,8 @@ The normalized event contains security-relevant fields such as:
 - Event source
 - Schema version
 
+Structured detection indicators are preserved when provided by the detection rule.
+
 This normalized layer keeps the detection engine independent from individual SIEM platforms.
 
 ---
@@ -879,9 +1083,8 @@ email-conversation-integrity-detection/
 │   ├── integrations/
 │   │   └── siem/
 │   ├── parser/
+│   ├── rules/
 │   └── scoring/
-│
-├── rules/
 │
 ├── tests/
 │
@@ -910,6 +1113,8 @@ src/integrations/siem/
 └── wazuh.py
 ```
 
+Detection rules are registered through the detection engine's rule registry.
+
 ---
 
 ## Technology Stack
@@ -922,6 +1127,7 @@ src/integrations/siem/
 | ORM | SQLAlchemy |
 | Email Parsing | Python `email` package |
 | Authentication Analysis | SPF / DKIM / DMARC header analysis |
+| Text Comparison | Python `difflib.SequenceMatcher` |
 | Containers | Docker / Docker Compose |
 | SIEM | Splunk / Elastic / Wazuh |
 | Testing | Pytest |
@@ -944,11 +1150,15 @@ Layer 3 — Authentication Analysis
         ↓
 Layer 4 — Infrastructure Analysis
         ↓
-Layer 5 — Behavioral Analysis
+Layer 5 — Conversation Analysis
         ↓
-Layer 6 — Risk Scoring
+Layer 6 — Behavioral Analysis
         ↓
-Layer 7 — SIEM / SOC Integration
+Layer 7 — Message Content Analysis
+        ↓
+Layer 8 — Risk Scoring
+        ↓
+Layer 9 — SIEM / SOC Integration
 ```
 
 The implementation prioritizes deterministic and explainable detections before introducing machine-learning-based anomaly detection.
@@ -965,6 +1175,9 @@ Every detection should explain why the message was considered suspicious.
 **Evidence First**
 Detections should be based on observable email evidence rather than assumptions.
 
+**Baseline Awareness**
+Behavioral and content-based detections should be grounded in a clearly defined historical or explicit baseline.
+
 **Least Privilege**
 Future integrations should request only the permissions required to inspect and alert on email.
 
@@ -976,6 +1189,9 @@ High-impact actions should not be performed automatically solely because a messa
 
 **Separation of Detection and Enrichment**
 Deterministic detection logic should remain understandable and testable independently from future enrichment and machine-learning components.
+
+**Structured Evidence**
+Detection rules should preserve machine-readable evidence where useful so downstream systems can investigate and correlate detections.
 
 ---
 
@@ -992,11 +1208,11 @@ python3 -m pytest -v
 **Current regression baseline:**
 
 ```text
-237 passed
+333 passed
 1 warning
 ```
 
-The warning currently originates from a Starlette/httpx deprecation in the installed testing dependency stack. It does not currently cause test failures.
+The current warning originates from a Starlette/httpx deprecation in the installed testing dependency stack. It does not currently cause test failures.
 
 The test suite covers:
 
@@ -1023,6 +1239,11 @@ The test suite covers:
 - Historical recipient frequency analysis
 - Historical recipient co-occurrence analysis
 - Historical recipient role analysis
+- Message content anomaly detection
+- Historical subject similarity analysis
+- Historical body similarity analysis
+- Historical body-length anomaly detection
+- Structured detection indicators
 
 ---
 
@@ -1061,6 +1282,8 @@ The project follows incremental development with focused tests followed by full 
 | BEC-005 Infrastructure Anomaly | ✅ |
 | BEC-006 Conversation Hijacking | ✅ |
 | BEC-007 Behavioral Anomaly | ⏳ Expanding |
+| BEC-008 Message Content Anomaly | ✅ |
+| Structured detection indicators | ✅ |
 | FastAPI | ✅ |
 | PostgreSQL | ✅ |
 | Docker / Docker Compose | ✅ |
@@ -1075,9 +1298,12 @@ The project follows incremental development with focused tests followed by full 
 | SIEM integration into analysis workflow | ✅ |
 | Application SIEM configuration | ✅ |
 | Behavioral detection expansion | ⏳ |
+| Content detection expansion | ⏳ |
 | ML anomaly detection | ⏳ |
 
 > BEC-007 has an operational deterministic implementation, but behavioral detection expansion remains in progress as additional historical communication signals are added and validated.
+
+> BEC-008 has an operational deterministic implementation covering subject similarity, body similarity, and body-length anomalies. More advanced semantic and attachment-aware content analysis remains future work.
 
 ---
 
@@ -1096,6 +1322,8 @@ Potential future capabilities include:
 - Threat-intelligence enrichment
 - Additional email-specific indicators
 - Expanded behavioral detection
+- Expanded semantic content analysis
+- Attachment-aware content analysis
 - Machine-learning anomaly detection
   - Isolation Forest
   - Local Outlier Factor
@@ -1120,6 +1348,7 @@ A future experimental component will investigate whether unsupervised machine le
 - `participant_count`
 - `subject_similarity`
 - `body_similarity`
+- `body_length`
 - `attachment_frequency`
 - `sender_infrastructure_frequency`
 - `domain_similarity`
@@ -1135,7 +1364,7 @@ A future experimental component will investigate whether unsupervised machine le
 - One-Class SVM
 - Autoencoder-based anomaly detection
 
-The ML layer will remain separate from the deterministic detection engine so that the system can compare rule-based and behavioral approaches.
+The ML layer will remain separate from the deterministic detection engine so that the system can compare rule-based, behavioral, and content-based approaches.
 
 ---
 
@@ -1168,6 +1397,13 @@ The current application architecture can be summarized as:
                └──────────────────┼──────────────────┘
                                   ▼
                          ┌───────────────────┐
+                         │ Conversation /    │
+                         │ Behavior /        │
+                         │ Content Analysis  │
+                         └─────────┬─────────┘
+                                   │
+                                   ▼
+                         ┌───────────────────┐
                          │ Detection Engine  │
                          └─────────┬─────────┘
                                    │
@@ -1192,6 +1428,100 @@ The current application architecture can be summarized as:
                                   ▼          ▼          ▼
                                Splunk     Elastic     Wazuh
 ```
+
+---
+
+## Detection Data Flow
+
+The current detection flow can be summarized as:
+
+```text
+                         .eml Message
+                              │
+                              ▼
+                         EmailParser
+                              │
+                              ▼
+                     Normalized Email Data
+                              │
+                              ▼
+                      DetectionContext
+                              │
+             ┌────────────────┼────────────────┐
+             ▼                ▼                ▼
+          Identity       Authentication   Infrastructure
+             │                │                │
+             └────────────────┼────────────────┘
+                              │
+                              ▼
+                  Conversation / Participants
+                              │
+                              ▼
+                 Historical Behavioral Data
+                              │
+                              ▼
+                  Historical Content Data
+                              │
+                              ▼
+                     Detection Rules
+                              │
+                              ▼
+                    DetectionResult
+                              │
+                              ▼
+                       RiskScorer
+                              │
+                              ▼
+                    Structured Result
+                              │
+             ┌────────────────┼────────────────┐
+             ▼                ▼                ▼
+             API          PostgreSQL          SIEM
+```
+
+This separation allows the detection rules to generate explainable evidence while downstream systems determine how that evidence is persisted, displayed, or forwarded.
+
+---
+
+## Limitations
+
+The current MVP has several limitations:
+
+- Detection quality depends on the quality of the supplied baseline.
+- Historical behavioral detection requires sufficient historical observations.
+- Historical content detection requires sufficient qualifying subject/body observations.
+- Deterministic text similarity does not provide semantic understanding.
+- Subject and body similarity can produce false positives when legitimate communication changes substantially.
+- A declared email timezone offset does not establish physical sender location.
+- SPF, DKIM, and DMARC analysis depends on authentication information available in the analyzed message.
+- Infrastructure analysis is currently based on observed hosts and IP addresses.
+- Sender infrastructure reputation is not currently implemented.
+- Attachments are currently outside the scope of BEC-008.
+- Machine-learning-based anomaly detection has not yet been integrated into the production detection path.
+- Historical baseline poisoning is a potential risk if untrusted observations are introduced into the baseline.
+- Detection scores are explainable indicators, not definitive proof of compromise.
+
+These limitations are expected to be addressed incrementally as the project evolves.
+
+---
+
+## Security Considerations
+
+Because the system analyzes potentially sensitive email communications, deployments should consider:
+
+- Secure storage of email data
+- Database access controls
+- Encryption in transit
+- Secret management
+- SIEM credential protection
+- Access logging
+- Data retention policies
+- Privacy requirements
+- Historical baseline integrity
+- Protection against baseline poisoning
+- Controlled access to investigation results
+
+> The system should be deployed only in environments where the organization has appropriate authorization to inspect the analyzed communications.
 
 ---
 
