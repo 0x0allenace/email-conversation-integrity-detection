@@ -679,12 +679,13 @@ Detects suspicious differences between the current message content and historica
 
 The current implementation uses deterministic text comparison rather than machine learning.
 
-BEC-008 evaluates four independent content signals:
+BEC-008 evaluates five independent content signals:
 
 - Subject similarity
 - Body similarity
 - Body length
 - Attachment filename novelty
+- Attachment size anomaly
 
 Historical observations must contain sufficient valid subject/body data before content comparison is performed.
 
@@ -798,9 +799,44 @@ Indicator:
 
 > The current implementation analyzes attachment metadata only. It does not inspect attachment contents or perform malware analysis.
 
+#### Attachment Size Anomaly
+
+BEC-008 compares the size of a current attachment against the historical size baseline for the same normalized filename.
+
+Attachment size analysis:
+
+- Groups historical attachment sizes by normalized filename
+- Requires at least 3 valid historical size observations for the same filename
+- Uses the historical median size as the baseline
+- Ignores historical attachment entries with missing or invalid size metadata
+- Flags the current attachment when its size is more than 2.0x the historical median
+- Flags the current attachment when its size is less than 0.5x the historical median
+
+```text
+Historical attachment:
+  invoice.pdf
+  100 KB
+  110 KB
+  105 KB
+
+Historical median:
+  105 KB
+
+Observed:
+  invoice.pdf
+  300 KB
+
+Indicator:
+  - Attachment size differs substantially from the historical baseline
+```
+
+Attachment filename novelty and attachment size anomaly are evaluated independently. A familiar filename can therefore still produce a size anomaly, while a novel filename is handled by the separate filename-novelty signal.
+
+> The current implementation analyzes attachment metadata only. It does not inspect attachment contents or perform malware analysis.
+
 #### Multiple Content Anomalies
 
-BEC-008 evaluates the subject, body, body-length, and attachment filename signals independently.
+BEC-008 evaluates the subject, body, body-length, attachment filename, and attachment size signals independently.
 
 A single message may therefore produce multiple content indicators:
 
@@ -839,10 +875,9 @@ BEC-008 currently analyzes:
 - Historical body similarity
 - Historical body length
 - Attachment filename novelty
+- Attachment size anomalies based on historical attachment metadata
 
-Attachment analysis is currently limited to filename novelty based on historical attachment metadata.
-
-Future content analysis may incorporate richer semantic analysis, attachment type analysis, attachment size analysis, and attachment-content inspection.
+Attachment analysis is currently limited to filename novelty and size comparison based on historical attachment metadata. Attachment contents are not inspected.
 
 ---
 
@@ -1334,7 +1369,7 @@ The project follows incremental development with focused tests followed by full 
 
 > BEC-007 has an operational deterministic implementation, but behavioral detection expansion remains in progress as additional historical communication signals are added and validated.
 
-> BEC-008 has an operational deterministic implementation covering subject similarity, body similarity, body-length anomalies, and attachment filename novelty. More advanced semantic and attachment-aware content analysis remains future work.
+> BEC-008 has an operational deterministic implementation covering subject similarity, body similarity, body-length anomalies, attachment filename novelty, and attachment size anomalies. More advanced semantic and attachment-content analysis remains future work.
 
 ---
 
@@ -1527,7 +1562,7 @@ The current MVP has several limitations:
 - SPF, DKIM, and DMARC analysis depends on authentication information available in the analyzed message.
 - Infrastructure analysis is currently based on observed hosts and IP addresses.
 - Sender infrastructure reputation is not currently implemented.
-- BEC-008 attachment analysis is currently limited to filename novelty; attachment contents are not inspected.
+- BEC-008 attachment analysis is limited to metadata-based filename novelty and size comparison; attachment contents are not inspected.
 - Machine-learning-based anomaly detection has not yet been integrated into the production detection path.
 - Historical baseline poisoning is a potential risk if untrusted observations are introduced into the baseline.
 - Detection scores are explainable indicators, not definitive proof of compromise.
