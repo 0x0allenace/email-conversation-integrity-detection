@@ -918,3 +918,259 @@ def test_evaluate_indicator_evidence_contains_analysis():
         assert "type" in indicator
         assert "evidence" in indicator
         assert isinstance(indicator["evidence"], dict)
+
+def test_normalize_attachment_filename():
+    rule = MessageContentAnomalyRule()
+
+    assert (
+        rule._normalize_attachment_filename(
+            "  Invoice.PDF  "
+        )
+        == "invoice.pdf"
+    )
+
+
+def test_normalize_attachment_filename_normalizes_internal_whitespace():
+    rule = MessageContentAnomalyRule()
+
+    assert (
+        rule._normalize_attachment_filename(
+            "bank   details.pdf"
+        )
+        == "bank details.pdf"
+    )
+
+
+def test_calculate_attachment_novelty_requires_minimum_history():
+    rule = MessageContentAnomalyRule()
+
+    result = rule._calculate_attachment_novelty(
+        [
+            {
+                "filename": "invoice.pdf",
+                "content_type": "application/pdf",
+                "size_bytes": 9,
+            }
+        ],
+        [
+            {"attachments": [{"filename": "invoice.pdf"}]},
+            {"attachments": [{"filename": "invoice.pdf"}]},
+        ],
+    )
+
+    assert result["available"] is False
+    assert result["historical_observation_count"] == 2
+    assert result["novel_filenames"] == []
+
+
+def test_calculate_attachment_novelty_matches_historical_filename():
+    rule = MessageContentAnomalyRule()
+
+    result = rule._calculate_attachment_novelty(
+        [
+            {
+                "filename": "Invoice.PDF",
+                "content_type": "application/pdf",
+                "size_bytes": 9,
+            }
+        ],
+        [
+            {"attachments": [{"filename": "invoice.pdf"}]},
+            {"attachments": [{"filename": "invoice.pdf"}]},
+            {"attachments": [{"filename": "invoice.pdf"}]},
+        ],
+    )
+
+    assert result["available"] is True
+    assert result["current_filenames"] == ["invoice.pdf"]
+    assert result["historical_filenames"] == ["invoice.pdf"]
+    assert result["novel_filenames"] == []
+
+
+def test_calculate_attachment_novelty_detects_new_filename():
+    rule = MessageContentAnomalyRule()
+
+    result = rule._calculate_attachment_novelty(
+        [
+            {
+                "filename": "bank-details.pdf",
+                "content_type": "application/pdf",
+                "size_bytes": 100,
+            }
+        ],
+        [
+            {"attachments": [{"filename": "invoice.pdf"}]},
+            {"attachments": [{"filename": "invoice.pdf"}]},
+            {"attachments": [{"filename": "invoice.pdf"}]},
+        ],
+    )
+
+    assert result["available"] is True
+    assert result["current_filenames"] == ["bank-details.pdf"]
+    assert result["historical_filenames"] == ["invoice.pdf"]
+    assert result["novel_filenames"] == ["bank-details.pdf"]
+
+
+def test_calculate_attachment_novelty_ignores_missing_historical_metadata():
+    rule = MessageContentAnomalyRule()
+
+    result = rule._calculate_attachment_novelty(
+        [
+            {"filename": "bank-details.pdf"}
+        ],
+        [
+            {},
+            {"subject": "Invoice Update"},
+            {"attachments": [{"filename": "invoice.pdf"}]},
+            {"attachments": [{"filename": "invoice.pdf"}]},
+            {"attachments": [{"filename": "invoice.pdf"}]},
+        ],
+    )
+
+    assert result["available"] is True
+    assert result["historical_observation_count"] == 3
+    assert result["novel_filenames"] == ["bank-details.pdf"]
+
+
+def test_attachment_novelty_anomaly_requires_available_analysis():
+    assert (
+        MessageContentAnomalyRule._is_attachment_novelty_anomaly(
+            {
+                "available": False,
+                "novel_filenames": ["invoice.pdf"],
+            }
+        )
+        is False
+    )
+
+
+def test_attachment_novelty_anomaly_detects_novel_filename():
+    assert (
+        MessageContentAnomalyRule._is_attachment_novelty_anomaly(
+            {
+                "available": True,
+                "novel_filenames": ["bank-details.pdf"],
+            }
+        )
+        is True
+    )
+
+
+def test_attachment_novelty_anomaly_accepts_historical_filename():
+    assert (
+        MessageContentAnomalyRule._is_attachment_novelty_anomaly(
+            {
+                "available": True,
+                "novel_filenames": [],
+            }
+        )
+        is False
+    )
+
+
+def test_evaluate_detects_attachment_novelty_anomaly():
+    rule = MessageContentAnomalyRule()
+
+    context = DetectionContext(
+        email_data={
+            "subject": "Invoice Update",
+            "body": "Please review the updated invoice.",
+        },
+        identity={},
+        participants=[],
+        authentication={},
+        infrastructure={},
+        known_domain="supplier.com",
+        known_display_name="Bob Supplier",
+        known_participants=[],
+        known_hosts=[],
+        known_ip_addresses=[],
+        attachments=[
+            {
+                "filename": "bank-details.pdf",
+                "content_type": "application/pdf",
+                "size_bytes": 100,
+            }
+        ],
+        historical_observations=[
+            {
+                "subject": "Invoice Update",
+                "body": "Please review the updated invoice.",
+                "attachments": [{"filename": "invoice.pdf"}],
+            },
+            {
+                "subject": "Invoice Update",
+                "body": "Please review the updated invoice.",
+                "attachments": [{"filename": "invoice.pdf"}],
+            },
+            {
+                "subject": "Invoice Update",
+                "body": "Please review the updated invoice.",
+                "attachments": [{"filename": "invoice.pdf"}],
+            },
+        ],
+    )
+
+    result = rule.evaluate(context)
+
+    assert result["matched"] is True
+
+    indicator_types = {
+        indicator["type"]
+        for indicator in result["indicators"]
+    }
+
+    assert "attachment_novelty_anomaly" in indicator_types
+
+
+def test_evaluate_does_not_flag_historical_attachment_as_novel():
+    rule = MessageContentAnomalyRule()
+
+    context = DetectionContext(
+        email_data={
+            "subject": "Invoice Update",
+            "body": "Please review the updated invoice.",
+        },
+        identity={},
+        participants=[],
+        authentication={},
+        infrastructure={},
+        known_domain="supplier.com",
+        known_display_name="Bob Supplier",
+        known_participants=[],
+        known_hosts=[],
+        known_ip_addresses=[],
+        attachments=[
+            {
+                "filename": "invoice.pdf",
+                "content_type": "application/pdf",
+                "size_bytes": 9,
+            }
+        ],
+        historical_observations=[
+            {
+                "subject": "Invoice Update",
+                "body": "Please review the updated invoice.",
+                "attachments": [{"filename": "invoice.pdf"}],
+            },
+            {
+                "subject": "Invoice Update",
+                "body": "Please review the updated invoice.",
+                "attachments": [{"filename": "invoice.pdf"}],
+            },
+            {
+                "subject": "Invoice Update",
+                "body": "Please review the updated invoice.",
+                "attachments": [{"filename": "invoice.pdf"}],
+            },
+        ],
+    )
+
+    result = rule.evaluate(context)
+
+    indicator_types = {
+        indicator["type"]
+        for indicator in result["indicators"]
+    }
+
+    assert "attachment_novelty_anomaly" not in indicator_types

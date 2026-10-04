@@ -44,6 +44,11 @@ class MessageContentAnomalyRule(DetectionRule):
             historical_observations,
         )
 
+        attachment_analysis = self._calculate_attachment_novelty(
+            context.attachments,
+            historical_observations,
+        )
+
         subject_anomaly = self._is_subject_similarity_anomaly(
             subject_analysis,
         )
@@ -54,6 +59,10 @@ class MessageContentAnomalyRule(DetectionRule):
 
         body_length_anomaly = self._is_body_length_anomaly(
             body_length_analysis,
+        )
+
+        attachment_anomaly = self._is_attachment_novelty_anomaly(
+            attachment_analysis,
         )
 
         indicators: list[dict[str, Any]] = []
@@ -79,6 +88,14 @@ class MessageContentAnomalyRule(DetectionRule):
                 {
                     "type": "body_length_anomaly",
                     "evidence": body_length_analysis,
+                }
+            )
+
+        if attachment_anomaly:
+            indicators.append(
+                {
+                    "type": "attachment_novelty_anomaly",
+                    "evidence": attachment_analysis,
                 }
             )
 
@@ -290,6 +307,101 @@ class MessageContentAnomalyRule(DetectionRule):
             max_similarity
             < self.BODY_SIMILARITY_THRESHOLD
         )
+
+    @staticmethod
+    def _normalize_attachment_filename(filename: Any) -> str:
+        """Normalize an attachment filename for comparison."""
+
+        if filename is None:
+            return ""
+
+        normalized = str(filename).strip().lower()
+
+        normalized = re.sub(
+            r"\s+",
+            " ",
+            normalized,
+        )
+
+        return normalized.strip()
+
+    def _calculate_attachment_novelty(
+        self,
+        current_attachments: list[dict[str, Any]],
+        historical_observations: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Compare current attachment filenames against historical filenames."""
+
+        current_filenames = {
+            normalized
+            for attachment in current_attachments
+            if isinstance(attachment, dict)
+            for normalized in [
+                self._normalize_attachment_filename(
+                    attachment.get("filename")
+                )
+            ]
+            if normalized
+        }
+
+        historical_attachments: list[list[dict[str, Any]]] = []
+
+        for observation in historical_observations:
+            attachments = observation.get("attachments")
+
+            if not isinstance(attachments, list):
+                continue
+
+            historical_attachments.append(attachments)
+
+        if len(historical_attachments) < self.MIN_HISTORICAL_OBSERVATIONS:
+            return {
+                "available": False,
+                "current_filenames": sorted(current_filenames),
+                "historical_observation_count": len(
+                    historical_attachments
+                ),
+                "historical_filenames": [],
+                "novel_filenames": [],
+            }
+
+        historical_filenames = {
+            normalized
+            for attachments in historical_attachments
+            for attachment in attachments
+            if isinstance(attachment, dict)
+            for normalized in [
+                self._normalize_attachment_filename(
+                    attachment.get("filename")
+                )
+            ]
+            if normalized
+        }
+
+        novel_filenames = sorted(
+            current_filenames - historical_filenames
+        )
+
+        return {
+            "available": True,
+            "current_filenames": sorted(current_filenames),
+            "historical_observation_count": len(
+                historical_attachments
+            ),
+            "historical_filenames": sorted(historical_filenames),
+            "novel_filenames": novel_filenames,
+        }
+
+    @staticmethod
+    def _is_attachment_novelty_anomaly(
+        analysis: dict[str, Any],
+    ) -> bool:
+        """Determine whether current attachments are historically novel."""
+
+        if not analysis.get("available"):
+            return False
+
+        return bool(analysis.get("novel_filenames"))
 
     def _is_body_length_anomaly(
         self,
