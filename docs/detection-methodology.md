@@ -702,10 +702,13 @@ The currently implemented BEC-007 behavioral signals are:
 | Typical timezone offset | Supplied behavioral baseline | Implemented |
 | Historical sending-hour range | Persisted sender observations | Implemented |
 | Historical sending frequency | Persisted sender observations | Implemented |
-| Historical recipient behavior | Persisted sender observations | Implemented |
-| Historical recipient frequency | Persisted sender observations | Implemented |
-| Historical recipient co-occurrence | Persisted sender observations | Implemented |
-| Historical recipient role anomaly | Persisted sender observations | Implemented |
+| Recipient novelty | Persisted sender observations | Implemented |
+| Recipient frequency anomaly | Persisted sender observations | Implemented |
+| Recipient relationship anomaly | Persisted sender observations | Implemented |
+| Recipient role anomaly | Persisted sender observations | Implemented |
+| Recipient group anomaly | Persisted sender observations | Implemented |
+| Recipient recency anomaly | Persisted sender observations | Implemented |
+| Recipient sequence anomaly | Persisted sender observations | Implemented |
 
 These signals are intentionally deterministic and explainable.
 
