@@ -632,6 +632,70 @@ An empty `Cc` list is treated as a valid historical observation. The signal requ
 
 This signal is independent of the overall recipient-count anomaly. A message can therefore have a normal total recipient count while still exhibiting unusual CC usage.
 
+#### Attachment Usage Anomaly
+
+BEC-007 can compare whether the current message contains an attachment with the sender's historical attachment usage.
+
+This signal evaluates **attachment usage behavior only**. It does not analyze attachment filenames, attachment sizes, or attachment content. Those signals remain part of BEC-008.
+
+The historical attachment usage rate is calculated as:
+
+```text
+Historical attachment usage rate =
+
+  Messages with attachments /
+
+  Qualifying historical observations
+```
+
+The signal requires at least three valid historical attachment observations before establishing a behavioral baseline. An explicit empty `attachments` list is treated as a valid observation.
+
+**For example:**
+
+```text
+Historical behavior:
+  Attachment usage: 0%
+
+Observed:
+  Current message contains an attachment
+
+Indicator:
+  - Message contains an unusual attachment usage pattern
+```
+
+The signal uses the existing deterministic `25%` behavioral threshold:
+
+```text
+Historical attachment usage: 20%
+Current message: attachment present
+Result:
+  Attachment usage anomaly
+
+Historical attachment usage: 25%
+Current message: attachment present
+Result:
+  No attachment usage anomaly
+
+Historical attachment usage: 80%
+Current message: no attachment
+Result:
+  Attachment usage anomaly
+
+Historical attachment usage: 75%
+Current message: no attachment
+Result:
+  No attachment usage anomaly
+```
+
+Therefore:
+
+- A current attachment is anomalous when historical attachment usage is below `25%`.
+- A current message without an attachment is anomalous when historical attachment usage is above `75%`.
+- Exactly `25%` and `75%` are treated as normal boundaries.
+- Insufficient historical attachment observations do not produce an attachment usage anomaly.
+
+BEC-007 therefore detects changes in **attachment usage behavior**, while BEC-008 remains responsible for **attachment filename novelty** and **attachment size anomalies**.
+
 #### Historical Recipient Co-Occurrence
 
 Recipient co-occurrence evaluates whether recipients that appear together in the current message have historically appeared together in the same communication.

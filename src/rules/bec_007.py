@@ -191,6 +191,25 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
             )
         )
 
+        historical_attachment_usage_rate = (
+            self._build_historical_attachment_usage_rate(
+                context.historical_observations
+            )
+        )
+
+        current_attachment_present = (
+            self._calculate_current_attachment_presence(
+                context.attachments
+            )
+        )
+
+        attachment_usage_anomaly = (
+            self._is_attachment_usage_anomaly(
+                current_attachment_present,
+                historical_attachment_usage_rate,
+            )
+        )
+
         historical_recipient_transition_frequencies = (
             self._build_historical_recipient_transition_frequencies(
                 context.historical_observations
@@ -280,6 +299,11 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
                     "Message contains an unusual CC recipient count"
                 )
 
+            if attachment_usage_anomaly:
+                indicators.append(
+                    "Message contains an unusual attachment usage pattern"
+                )
+
             if unusual_recipient_transitions:
                 indicators.append(
                     "Message follows an unusual recipient communication sequence"
@@ -340,6 +364,11 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
                 ),
                 current_cc_count=current_cc_count,
                 cc_count_anomaly=cc_count_anomaly,
+                historical_attachment_usage_rate=(
+                    historical_attachment_usage_rate
+                ),
+                current_attachment_present=current_attachment_present,
+                attachment_usage_anomaly=attachment_usage_anomaly,
                 historical_recipient_transition_frequencies=(
                     historical_recipient_transition_frequencies
                 ),
@@ -434,6 +463,11 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
         if cc_count_anomaly:
             indicators.append(
                 "Message contains an unusual CC recipient count"
+            )
+
+        if attachment_usage_anomaly:
+            indicators.append(
+                "Message contains an unusual attachment usage pattern"
             )
 
         if unusual_recipient_transitions:
@@ -535,6 +569,11 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
             ),
             current_cc_count=current_cc_count,
             cc_count_anomaly=cc_count_anomaly,
+            historical_attachment_usage_rate=(
+                historical_attachment_usage_rate
+            ),
+            current_attachment_present=current_attachment_present,
+            attachment_usage_anomaly=attachment_usage_anomaly,
             historical_recipient_transition_frequencies=(
                 historical_recipient_transition_frequencies
             ),
@@ -891,6 +930,80 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
         return len(
             cls._normalize_recipients(cc_recipients)
         )
+
+    @classmethod
+    def _build_historical_attachment_usage_rate(
+        cls,
+        observations: list[dict[str, Any]],
+    ) -> float | None:
+        """Build the historical rate of messages containing attachments."""
+
+        if len(observations) < cls.MIN_HISTORICAL_OBSERVATIONS:
+            return None
+
+        attachment_observations = 0
+        messages_with_attachments = 0
+
+        for observation in observations:
+            if not isinstance(observation, dict):
+                continue
+
+            result = observation.get("result")
+
+            if not isinstance(result, dict):
+                continue
+
+            email = result.get("email")
+
+            if not isinstance(email, dict):
+                continue
+
+            if "attachments" not in email:
+                continue
+
+            attachments = email.get("attachments")
+
+            if not isinstance(attachments, list):
+                continue
+
+            attachment_observations += 1
+
+            if attachments:
+                messages_with_attachments += 1
+
+        if attachment_observations < cls.MIN_HISTORICAL_OBSERVATIONS:
+            return None
+
+        return messages_with_attachments / attachment_observations
+
+    @staticmethod
+    def _calculate_current_attachment_presence(
+        attachments: list[dict[str, Any]],
+    ) -> bool:
+        """Determine whether the current message contains an attachment."""
+
+        return bool(attachments)
+
+    @classmethod
+    def _is_attachment_usage_anomaly(
+        cls,
+        current_attachment_present: bool,
+        historical_attachment_usage_rate: float | None,
+    ) -> bool:
+        """Determine whether current attachment usage is historically unusual."""
+
+        if historical_attachment_usage_rate is None:
+            return False
+
+        if not 0.0 <= historical_attachment_usage_rate <= 1.0:
+            return False
+
+        threshold = cls.FREQUENCY_ANOMALY_RATIO
+
+        if current_attachment_present:
+            return historical_attachment_usage_rate < threshold
+
+        return historical_attachment_usage_rate > (1.0 - threshold)
 
     @classmethod
     def _calculate_current_recipient_count(
@@ -2274,6 +2387,8 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
         historical_cc_count_median: float | None,
         current_cc_count: int,
         cc_count_anomaly: bool,
+        historical_attachment_usage_rate: float | None,
+        current_attachment_present: bool,
         historical_recipient_frequencies: dict[str, float],
         historical_recipient_interval_statistics: dict[
             str,
@@ -2319,6 +2434,10 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
                 historical_cc_count_median
             ),
             "cc_count_ratio": cc_count_ratio,
+            "attachment_present": int(current_attachment_present),
+            "historical_attachment_usage_rate": (
+                historical_attachment_usage_rate
+            ),
             "recipient_historical_frequencies": (
                 dict(historical_recipient_frequencies)
             ),
@@ -2437,6 +2556,7 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
         unusual_recipient_groups: list[tuple[str, ...]],
         recipient_count_anomaly: bool,
         cc_count_anomaly: bool,
+        attachment_usage_anomaly: bool,
         unusual_recipient_recency: list[str],
         unusual_recipient_transitions: list[
             tuple[tuple[str, ...], tuple[str, ...]]
@@ -2494,6 +2614,7 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
             "recipient_group_anomaly": int(bool(unusual_recipient_groups)),
             "recipient_count_anomaly": int(recipient_count_anomaly),
             "cc_count_anomaly": int(cc_count_anomaly),
+            "attachment_usage_anomaly": int(attachment_usage_anomaly),
             "recipient_recency_anomaly": int(bool(unusual_recipient_recency)),
             "recipient_sequence_anomaly": int(bool(unusual_recipient_transitions)),
         }
@@ -2547,6 +2668,8 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
         current_cc_count: int,
         historical_cc_count_median: float | None,
         cc_count_ratio: float | None,
+        historical_attachment_usage_rate: float | None,
+        current_attachment_present: bool,
         historical_recipient_transition_frequencies: dict[
             tuple[tuple[str, ...], tuple[str, ...]],
             float,
@@ -2754,6 +2877,19 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
                 },
             }
 
+        if behavioral_features["attachment_usage_anomaly"]:
+            evidence["attachment_usage_anomaly"] = {
+                "detected": 1,
+                "evidence": {
+                    "attachment_present": int(
+                        current_attachment_present
+                    ),
+                    "historical_attachment_usage_rate": (
+                        historical_attachment_usage_rate
+                    ),
+                },
+            }
+
         if behavioral_features["recipient_sequence_anomaly"]:
             evidence["recipient_sequence_anomaly"] = {
                 "detected": 1,
@@ -2837,6 +2973,9 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
         historical_cc_count_median: float | None,
         current_cc_count: int,
         cc_count_anomaly: bool,
+        historical_attachment_usage_rate: float | None,
+        current_attachment_present: bool,
+        attachment_usage_anomaly: bool,
         historical_recipient_transition_frequencies: dict[
             tuple[tuple[str, ...], tuple[str, ...]],
             float,
@@ -2891,6 +3030,10 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
             ),
             current_cc_count=current_cc_count,
             cc_count_anomaly=cc_count_anomaly,
+            historical_attachment_usage_rate=(
+                historical_attachment_usage_rate
+            ),
+            current_attachment_present=current_attachment_present,
             historical_recipient_frequencies=(
                 historical_recipient_frequencies
             ),
@@ -2925,6 +3068,7 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
             unusual_recipient_groups=unusual_recipient_groups,
             recipient_count_anomaly=recipient_count_anomaly,
             cc_count_anomaly=cc_count_anomaly,
+            attachment_usage_anomaly=attachment_usage_anomaly,
             unusual_recipient_recency=unusual_recipient_recency,
             unusual_recipient_transitions=unusual_recipient_transitions,
             current_frequency_interval=current_frequency_interval,
@@ -2999,6 +3143,10 @@ class BehavioralCommunicationAnomalyRule(DetectionRule):
                 cc_count_ratio=(
                     behavioral_metrics["cc_count_ratio"]
                 ),
+                historical_attachment_usage_rate=(
+                    historical_attachment_usage_rate
+                ),
+                current_attachment_present=current_attachment_present,
                 historical_recipient_transition_frequencies=(
                     historical_recipient_transition_frequencies
                 ),

@@ -9,6 +9,7 @@ def build_context(
     recipients: list[str] | None = None,
     to_recipients: list[str] | None = None,
     cc_recipients: list[str] | None = None,
+    attachments: list[dict] | None = None,
     typical_days: list[int] | None = None,
     typical_timezone_offsets: list[int] | None = None,
     historical_observations: list[dict] | None = None,
@@ -40,6 +41,11 @@ def build_context(
         recipients=(
             recipients
             if recipients is not None
+            else []
+        ),
+        attachments=(
+            attachments
+            if attachments is not None
             else []
         ),
         authentication={
@@ -303,6 +309,191 @@ def test_bec_007_normalizes_current_cc_count():
     )
 
     assert count == 2
+
+
+def test_bec_007_builds_historical_attachment_usage_rate():
+    """BEC-007 should calculate the historical rate of messages with attachments."""
+
+    observations = [
+        {
+            "result": {
+                "email": {
+                    "attachments": [
+                        {
+                            "filename": "invoice.pdf",
+                        }
+                    ],
+                }
+            }
+        },
+        {
+            "result": {
+                "email": {
+                    "attachments": [],
+                }
+            }
+        },
+        {
+            "result": {
+                "email": {
+                    "attachments": [
+                        {
+                            "filename": "report.docx",
+                        }
+                    ],
+                }
+            }
+        },
+        {
+            "result": {
+                "email": {
+                    "attachments": [],
+                }
+            }
+        },
+    ]
+
+    usage_rate = (
+        BehavioralCommunicationAnomalyRule
+        ._build_historical_attachment_usage_rate(
+            observations
+        )
+    )
+
+    assert usage_rate == 0.5
+
+
+def test_bec_007_requires_minimum_history_for_attachment_usage():
+    """BEC-007 should require three valid attachment observations."""
+
+    observations = [
+        {
+            "result": {
+                "email": {
+                    "attachments": [],
+                }
+            }
+        },
+        {
+            "result": {
+                "email": {
+                    "attachments": [
+                        {
+                            "filename": "invoice.pdf",
+                        }
+                    ],
+                }
+            }
+        },
+    ]
+
+    usage_rate = (
+        BehavioralCommunicationAnomalyRule
+        ._build_historical_attachment_usage_rate(
+            observations
+        )
+    )
+
+    assert usage_rate is None
+
+
+def test_bec_007_counts_empty_attachment_lists_as_valid_history():
+    """BEC-007 should count explicit empty attachment lists as observations."""
+
+    observations = [
+        {
+            "result": {
+                "email": {
+                    "attachments": [],
+                }
+            }
+        },
+        {
+            "result": {
+                "email": {
+                    "attachments": [],
+                }
+            }
+        },
+        {
+            "result": {
+                "email": {
+                    "attachments": [
+                        {
+                            "filename": "invoice.pdf",
+                        }
+                    ],
+                }
+            }
+        },
+    ]
+
+    usage_rate = (
+        BehavioralCommunicationAnomalyRule
+        ._build_historical_attachment_usage_rate(
+            observations
+        )
+    )
+
+    assert usage_rate == 1 / 3
+
+
+def test_bec_007_detects_attachment_usage_anomaly_at_usage_extremes():
+    """BEC-007 should detect attachment usage outside the 25% and 75% boundaries."""
+
+    assert (
+        BehavioralCommunicationAnomalyRule
+        ._is_attachment_usage_anomaly(
+            current_attachment_present=True,
+            historical_attachment_usage_rate=0.20,
+        )
+        is True
+    )
+
+    assert (
+        BehavioralCommunicationAnomalyRule
+        ._is_attachment_usage_anomaly(
+            current_attachment_present=False,
+            historical_attachment_usage_rate=0.80,
+        )
+        is True
+    )
+
+    assert (
+        BehavioralCommunicationAnomalyRule
+        ._is_attachment_usage_anomaly(
+            current_attachment_present=True,
+            historical_attachment_usage_rate=0.25,
+        )
+        is False
+    )
+
+    assert (
+        BehavioralCommunicationAnomalyRule
+        ._is_attachment_usage_anomaly(
+            current_attachment_present=False,
+            historical_attachment_usage_rate=0.75,
+        )
+        is False
+    )
+
+    assert (
+        BehavioralCommunicationAnomalyRule
+        ._is_attachment_usage_anomaly(
+            current_attachment_present=True,
+            historical_attachment_usage_rate=0.0,
+        )
+        is True
+    )
+
+    assert (
+        BehavioralCommunicationAnomalyRule
+        ._is_attachment_usage_anomaly(
+            current_attachment_present=False,
+            historical_attachment_usage_rate=1.0,
+        )
+        is True
+    )
 
 
 def test_bec_007_detects_recipient_count_anomaly():
@@ -628,6 +819,7 @@ def test_bec_007_builds_behavioral_feature_vector():
         "recipient_group_anomaly": 0,
         "recipient_count_anomaly": 0,
         "cc_count_anomaly": 0,
+        "attachment_usage_anomaly": 0,
         "recipient_recency_anomaly": 0,
         "recipient_sequence_anomaly": 0,
     }
@@ -696,6 +888,8 @@ def test_bec_007_exposes_behavioral_deviation_metrics():
         "cc_count": 0,
         "historical_cc_count_median": 0.0,
         "cc_count_ratio": None,
+        "attachment_present": 0,
+        "historical_attachment_usage_rate": None,
     }
 
 
@@ -3997,7 +4191,7 @@ def test_bec_007_builds_behavioral_summary():
     assert result["behavioral_features"]["recipient_novelty"] == 1
 
     assert result["behavioral_anomaly_count"] == 5
-    assert result["behavioral_anomaly_ratio"] == 5 / 14
+    assert result["behavioral_anomaly_ratio"] == 5 / 15
     assert result["anomalous_behavioral_features"] == [
         "sending_hour_anomaly",
         "historical_hour_anomaly",
@@ -4118,6 +4312,105 @@ def test_bec_007_exposes_behavioral_evidence():
             },
         },
     }
+
+def test_bec_007_exposes_attachment_usage_anomaly_evidence():
+    """BEC-007 should expose evidence behind an attachment usage anomaly."""
+
+    rule = BehavioralCommunicationAnomalyRule()
+
+    context = build_context(
+        date="Wed, 23 Sep 2026 10:00:00 +0000",
+        typical_hours=[10],
+        attachments=[
+            {
+                "filename": "invoice.pdf",
+                "content_type": "application/pdf",
+                "size_bytes": 1024,
+            }
+        ],
+        historical_observations=[
+            {
+                "result": {
+                    "email": {
+                        "attachments": [],
+                    }
+                }
+            },
+            {
+                "result": {
+                    "email": {
+                        "attachments": [],
+                    }
+                }
+            },
+            {
+                "result": {
+                    "email": {
+                        "attachments": [],
+                    }
+                }
+            },
+        ],
+    )
+
+    result = rule.evaluate(context)
+
+    assert result["behavioral_evidence"]["attachment_usage_anomaly"] == {
+        "detected": 1,
+        "evidence": {
+            "attachment_present": 1,
+            "historical_attachment_usage_rate": 0.0,
+        },
+    }
+
+
+def test_bec_007_exposes_attachment_usage_anomaly_indicator():
+    """BEC-007 should expose an indicator for unusual attachment usage."""
+
+    rule = BehavioralCommunicationAnomalyRule()
+
+    context = build_context(
+        date="Wed, 23 Sep 2026 10:00:00 +0000",
+        typical_hours=[10],
+        attachments=[
+            {
+                "filename": "invoice.pdf",
+                "content_type": "application/pdf",
+                "size_bytes": 1024,
+            }
+        ],
+        historical_observations=[
+            {
+                "result": {
+                    "email": {
+                        "attachments": [],
+                    }
+                }
+            },
+            {
+                "result": {
+                    "email": {
+                        "attachments": [],
+                    }
+                }
+            },
+            {
+                "result": {
+                    "email": {
+                        "attachments": [],
+                    }
+                }
+            },
+        ],
+    )
+
+    result = rule.evaluate(context)
+
+    assert (
+        "Message contains an unusual attachment usage pattern"
+        in result["indicators"]
+    )
+
 
 def test_bec_007_exposes_frequency_anomaly_evidence():
     """BEC-007 should expose evidence behind a sending-frequency anomaly."""
