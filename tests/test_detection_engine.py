@@ -440,6 +440,100 @@ communication hours.
     )
 
 
+def test_detection_engine_passes_attachment_usage_to_bec_007():
+    """Test BEC-007 attachment usage through the DetectionEngine."""
+
+    engine = DetectionEngine()
+
+    email_data = {
+        "from": "Bob Supplier <bob@supplier.com>",
+        "to": [
+            "Alice Company <alice@company.com>",
+        ],
+        "cc": [],
+        "reply_to": "",
+        "return_path": "bob@supplier.com",
+        "subject": "Invoice",
+        "body": "Please find the invoice attached.",
+        "attachments": [
+            {
+                "filename": "invoice.pdf",
+                "content_type": "application/pdf",
+                "size_bytes": 1024,
+            }
+        ],
+        "attachment_count": 1,
+        "date": "Wed, 23 Sep 2026 10:00:00 +0000",
+        "message_id": "<attachment-usage@example.com>",
+        "in_reply_to": "",
+        "references": "",
+        "authentication_results": "",
+        "received": [],
+    }
+
+    historical_observations = [
+        {
+            "result": {
+                "email": {
+                    "attachments": [],
+                }
+            }
+        },
+        {
+            "result": {
+                "email": {
+                    "attachments": [],
+                }
+            }
+        },
+        {
+            "result": {
+                "email": {
+                    "attachments": [],
+                }
+            }
+        },
+    ]
+
+    result = engine.analyze(
+        file_path="unused.eml",
+        known_domain="supplier.com",
+        known_display_name="Bob Supplier",
+        known_participants=KNOWN_PARTICIPANTS,
+        known_hosts=KNOWN_HOSTS,
+        known_ip_addresses=KNOWN_IP_ADDRESSES,
+        historical_observations=historical_observations,
+        email_data=email_data,
+    )
+
+    bec_007 = next(
+        detection
+        for detection in result["detections"]
+        if detection["rule_id"] == "BEC-007"
+    )
+
+    assert bec_007["matched"] is True
+    assert bec_007["risk_score"] == 20
+    assert bec_007["behavioral_features"]["attachment_usage_anomaly"] == 1
+    assert (
+        bec_007["behavioral_evidence"][
+            "attachment_usage_anomaly"
+        ]["evidence"]["historical_attachment_usage_rate"]
+        == 0.0
+    )
+    assert bec_007["behavioral_evidence"]["attachment_usage_anomaly"] == {
+        "detected": 1,
+        "evidence": {
+            "attachment_present": 1,
+            "historical_attachment_usage_rate": 0.0,
+        },
+    }
+    assert (
+        "Message contains an unusual attachment usage pattern"
+        in bec_007["indicators"]
+    )
+
+
 def test_detection_engine_extracts_recipients_from_to_and_cc():
     """Test that recipients contain To and Cc but exclude From and Reply-To."""
 
