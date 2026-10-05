@@ -188,6 +188,123 @@ def test_bec_007_requires_minimum_history_for_recipient_count():
     assert baseline is None
 
 
+def test_bec_007_builds_historical_cc_count_median():
+    """BEC-007 should calculate the historical median CC recipient count."""
+
+    observations = [
+        {
+            "result": {
+                "email": {
+                    "to": ["alice@company.com"],
+                    "cc": [],
+                }
+            }
+        },
+        {
+            "result": {
+                "email": {
+                    "to": ["alice@company.com"],
+                    "cc": ["bob@company.com"],
+                }
+            }
+        },
+        {
+            "result": {
+                "email": {
+                    "to": ["alice@company.com"],
+                    "cc": [
+                        "bob@company.com",
+                        "carol@company.com",
+                    ],
+                }
+            }
+        },
+        {
+            "result": {
+                "email": {
+                    "to": ["alice@company.com"],
+                    "cc": ["bob@company.com"],
+                }
+            }
+        },
+    ]
+
+    baseline = (
+        BehavioralCommunicationAnomalyRule
+        ._build_historical_cc_count_baseline(
+            observations
+        )
+    )
+
+    assert baseline == 1.0
+
+
+def test_bec_007_requires_minimum_history_for_cc_count():
+    """BEC-007 should require three valid observations for CC count."""
+
+    observations = [
+        {
+            "result": {
+                "email": {
+                    "to": ["alice@company.com"],
+                    "cc": [],
+                }
+            }
+        },
+        {
+            "result": {
+                "email": {
+                    "to": ["alice@company.com"],
+                    "cc": ["bob@company.com"],
+                }
+            }
+        },
+    ]
+
+    baseline = (
+        BehavioralCommunicationAnomalyRule
+        ._build_historical_cc_count_baseline(
+            observations
+        )
+    )
+
+    assert baseline is None
+
+
+def test_bec_007_calculates_current_cc_count():
+    """BEC-007 should calculate the normalized current CC recipient count."""
+
+    cc_recipients = [
+        "alice@company.com",
+        "bob@company.com",
+        "carol@company.com",
+    ]
+
+    count = (
+        BehavioralCommunicationAnomalyRule
+        ._calculate_current_cc_count(cc_recipients)
+    )
+
+    assert count == 3
+
+
+def test_bec_007_normalizes_current_cc_count():
+    """BEC-007 should normalize duplicate and whitespace-padded CC recipients."""
+
+    cc_recipients = [
+        " Alice@company.com ",
+        "alice@company.com",
+        "BOB@company.com",
+    ]
+
+    count = (
+        BehavioralCommunicationAnomalyRule
+        ._calculate_current_cc_count(cc_recipients)
+    )
+
+    assert count == 2
+
+
 def test_bec_007_detects_recipient_count_anomaly():
     """BEC-007 should detect recipient counts above twice the median."""
 
@@ -221,6 +338,154 @@ def test_bec_007_allows_normal_recipient_count():
         )
         is False
     )
+
+
+def test_bec_007_detects_cc_count_anomaly():
+    """BEC-007 should detect CC counts above or below the historical median."""
+
+    assert (
+        BehavioralCommunicationAnomalyRule
+        ._is_cc_count_anomaly(
+            current_cc_count=5,
+            historical_cc_count_median=2.0,
+        )
+        is True
+    )
+
+    assert (
+        BehavioralCommunicationAnomalyRule
+        ._is_cc_count_anomaly(
+            current_cc_count=0,
+            historical_cc_count_median=2.0,
+        )
+        is True
+    )
+
+
+def test_bec_007_allows_normal_cc_count():
+    """BEC-007 should allow normal and boundary CC counts."""
+
+    assert (
+        BehavioralCommunicationAnomalyRule
+        ._is_cc_count_anomaly(
+            current_cc_count=4,
+            historical_cc_count_median=2.0,
+        )
+        is False
+    )
+
+    assert (
+        BehavioralCommunicationAnomalyRule
+        ._is_cc_count_anomaly(
+            current_cc_count=1,
+            historical_cc_count_median=2.0,
+        )
+        is False
+    )
+
+
+def test_bec_007_detects_cc_usage_when_historical_median_is_zero():
+    """BEC-007 should flag new CC usage when historical CC usage was always zero."""
+
+    assert (
+        BehavioralCommunicationAnomalyRule
+        ._is_cc_count_anomaly(
+            current_cc_count=0,
+            historical_cc_count_median=0.0,
+        )
+        is False
+    )
+
+    assert (
+        BehavioralCommunicationAnomalyRule
+        ._is_cc_count_anomaly(
+            current_cc_count=1,
+            historical_cc_count_median=0.0,
+        )
+        is True
+    )
+
+
+def test_bec_007_detects_cc_count_anomaly_in_evaluate():
+    """BEC-007 should expose CC count anomalies through evaluate()."""
+
+    context = build_context(
+        date="2026-01-05T10:00:00+00:00",
+        typical_hours=[10],
+        recipients=[
+            "alice@company.com",
+            "bob@company.com",
+        ],
+        to_recipients=[
+            "alice@company.com",
+            "bob@company.com",
+        ],
+        cc_recipients=[
+            "carol@company.com",
+        ],
+        historical_observations=[
+            {
+                "result": {
+                    "email": {
+                        "date": "2026-01-01T10:00:00+00:00",
+                        "to": [
+                            "alice@company.com",
+                        ],
+                        "cc": [],
+                    }
+                }
+            },
+            {
+                "result": {
+                    "email": {
+                        "date": "2026-01-02T10:00:00+00:00",
+                        "to": [
+                            "alice@company.com",
+                        ],
+                        "cc": [],
+                    }
+                }
+            },
+            {
+                "result": {
+                    "email": {
+                        "date": "2026-01-03T10:00:00+00:00",
+                        "to": [
+                            "alice@company.com",
+                        ],
+                        "cc": [],
+                    }
+                }
+            },
+        ],
+    )
+
+    result = BehavioralCommunicationAnomalyRule().evaluate(context)
+
+    assert result["matched"] is True
+
+    assert (
+        "Message contains an unusual CC recipient count"
+        in result["indicators"]
+    )
+
+    assert result["behavioral_features"]["cc_count_anomaly"] == 1
+
+    assert result["behavioral_metrics"]["cc_count"] == 1
+    assert (
+        result["behavioral_metrics"]["historical_cc_count_median"]
+        == 0.0
+    )
+    assert result["behavioral_metrics"]["cc_count_ratio"] is None
+
+    assert result["behavioral_evidence"]["cc_count_anomaly"] == {
+        "detected": 1,
+        "evidence": {
+            "current_cc_count": 1,
+            "historical_cc_count_median": 0.0,
+            "cc_count_ratio": None,
+        },
+    }
 
 
 def test_bec_007_detects_recipient_count_anomaly_in_evaluate():
@@ -362,6 +627,7 @@ def test_bec_007_builds_behavioral_feature_vector():
         "recipient_role_anomaly": 0,
         "recipient_group_anomaly": 0,
         "recipient_count_anomaly": 0,
+        "cc_count_anomaly": 0,
         "recipient_recency_anomaly": 0,
         "recipient_sequence_anomaly": 0,
     }
@@ -427,6 +693,9 @@ def test_bec_007_exposes_behavioral_deviation_metrics():
         "recipient_count": 1,
         "historical_recipient_count_median": 1.0,
         "recipient_count_ratio": 1.0,
+        "cc_count": 0,
+        "historical_cc_count_median": 0.0,
+        "cc_count_ratio": None,
     }
 
 
@@ -1408,6 +1677,9 @@ def test_bec_007_allows_established_recipient_cooccurrence():
             "alice@company.com",
             "finance@company.com",
         ],
+        cc_recipients=[
+            "finance@company.com",
+        ],
         historical_observations=[
             {
                 "email_sent_at": "2026-09-20T09:30:00+00:00",
@@ -1477,6 +1749,9 @@ def test_bec_007_combines_to_and_cc_for_recipient_cooccurrence():
         recipients=[
             "finance@company.com",
             "alice@company.com",
+        ],
+        cc_recipients=[
+            "finance@company.com",
         ],
         historical_observations=[
             {
@@ -3722,7 +3997,7 @@ def test_bec_007_builds_behavioral_summary():
     assert result["behavioral_features"]["recipient_novelty"] == 1
 
     assert result["behavioral_anomaly_count"] == 5
-    assert result["behavioral_anomaly_ratio"] == 5 / 13
+    assert result["behavioral_anomaly_ratio"] == 5 / 14
     assert result["anomalous_behavioral_features"] == [
         "sending_hour_anomaly",
         "historical_hour_anomaly",

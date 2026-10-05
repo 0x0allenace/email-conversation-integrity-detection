@@ -442,6 +442,8 @@ The current implementation uses deterministic behavioral analysis. It can evalua
 - Historical recipient frequency
 - Historical recipient co-occurrence
 - Historical recipient role relationships
+- Historical recipient count
+- Historical CC usage and recipient count
 
 #### Sending Hour
 
@@ -572,6 +574,63 @@ Recipient frequency measures how often a particular recipient has appeared in th
 A recipient may be considered unusual when the historical frequency of that recipient falls below the configured behavioral threshold.
 
 This provides a more granular signal than simply asking whether the recipient has ever appeared before.
+
+#### Historical CC Usage and Recipient Count
+
+BEC-007 can compare the number of `Cc` recipients in the current message with the sender's historical CC usage.
+
+The historical CC baseline is calculated from the median number of normalized `Cc` recipients across qualifying historical observations.
+
+Example:
+
+```text
+Historical behavior:
+  Typical CC count: 2
+
+Observed:
+  CC count: 5
+
+Indicator:
+  - Message contains an unusual CC recipient count
+```
+
+The signal uses deterministic `2x` and `0.5x` boundaries around the historical median.
+
+For example:
+
+```text
+Historical median: 2
+
+Current CC count: 4
+Result:
+  No CC count anomaly
+
+Current CC count: 1
+Result:
+  No CC count anomaly
+
+Current CC count: 5
+Result:
+  CC count anomaly
+```
+
+An established historical median of zero is handled separately:
+
+```text
+Historical median: 0
+
+Current CC count: 0
+Result:
+  No CC count anomaly
+
+Current CC count: 1
+Result:
+  CC count anomaly
+```
+
+An empty `Cc` list is treated as a valid historical observation. The signal requires sufficient historical observations before establishing a behavioral baseline.
+
+This signal is independent of the overall recipient-count anomaly. A message can therefore have a normal total recipient count while still exhibiting unusual CC usage.
 
 #### Historical Recipient Co-Occurrence
 
