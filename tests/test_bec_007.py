@@ -85,6 +85,231 @@ def build_context(
     )
 
 
+def test_bec_007_builds_historical_recipient_count_median():
+    """BEC-007 should calculate the historical median recipient count."""
+
+    observations = [
+        {
+            "result": {
+                "email": {
+                    "to": [
+                        "alice@company.com",
+                        "bob@company.com",
+                    ],
+                    "cc": [],
+                }
+            }
+        },
+        {
+            "result": {
+                "email": {
+                    "to": [
+                        "alice@company.com",
+                        "bob@company.com",
+                    ],
+                    "cc": [
+                        "carol@company.com",
+                    ],
+                }
+            }
+        },
+        {
+            "result": {
+                "email": {
+                    "to": [
+                        "alice@company.com",
+                        "bob@company.com",
+                        "carol@company.com",
+                        "dave@company.com",
+                    ],
+                    "cc": [],
+                }
+            }
+        },
+        {
+            "result": {
+                "email": {
+                    "to": [
+                        "alice@company.com",
+                        "bob@company.com",
+                        "carol@company.com",
+                    ],
+                    "cc": [],
+                }
+            }
+        },
+    ]
+
+    baseline = (
+        BehavioralCommunicationAnomalyRule
+        ._build_historical_recipient_count_baseline(
+            observations
+        )
+    )
+
+    assert baseline == 3.0
+
+
+def test_bec_007_requires_minimum_history_for_recipient_count():
+    """BEC-007 should require three valid observations for recipient count."""
+
+    observations = [
+        {
+            "result": {
+                "email": {
+                    "to": [
+                        "alice@company.com",
+                        "bob@company.com",
+                    ],
+                    "cc": [],
+                }
+            }
+        },
+        {
+            "result": {
+                "email": {
+                    "to": [
+                        "alice@company.com",
+                        "bob@company.com",
+                    ],
+                    "cc": [],
+                }
+            }
+        },
+    ]
+
+    baseline = (
+        BehavioralCommunicationAnomalyRule
+        ._build_historical_recipient_count_baseline(
+            observations
+        )
+    )
+
+    assert baseline is None
+
+
+def test_bec_007_detects_recipient_count_anomaly():
+    """BEC-007 should detect recipient counts above twice the median."""
+
+    assert (
+        BehavioralCommunicationAnomalyRule
+        ._is_recipient_count_anomaly(
+            current_recipient_count=7,
+            historical_recipient_count_median=3.0,
+        )
+        is True
+    )
+
+
+def test_bec_007_allows_normal_recipient_count():
+    """BEC-007 should allow normal and boundary recipient counts."""
+
+    assert (
+        BehavioralCommunicationAnomalyRule
+        ._is_recipient_count_anomaly(
+            current_recipient_count=6,
+            historical_recipient_count_median=3.0,
+        )
+        is False
+    )
+
+    assert (
+        BehavioralCommunicationAnomalyRule
+        ._is_recipient_count_anomaly(
+            current_recipient_count=2,
+            historical_recipient_count_median=3.0,
+        )
+        is False
+    )
+
+
+def test_bec_007_detects_recipient_count_anomaly_in_evaluate():
+    """BEC-007 should expose recipient count anomalies through evaluate()."""
+
+    context = build_context(
+        date="2026-01-05T10:00:00+00:00",
+        typical_hours=[10],
+        recipients=[
+            "alice@company.com",
+            "bob@company.com",
+            "carol@company.com",
+            "dave@company.com",
+            "eve@company.com",
+        ],
+        to_recipients=[
+            "alice@company.com",
+            "bob@company.com",
+            "carol@company.com",
+            "dave@company.com",
+            "eve@company.com",
+        ],
+        historical_observations=[
+            {
+                "result": {
+                    "email": {
+                        "date": "2026-01-01T10:00:00+00:00",
+                        "to": [
+                            "alice@company.com",
+                            "bob@company.com",
+                        ],
+                        "cc": [],
+                    }
+                }
+            },
+            {
+                "result": {
+                    "email": {
+                        "date": "2026-01-02T10:00:00+00:00",
+                        "to": [
+                            "alice@company.com",
+                            "bob@company.com",
+                        ],
+                        "cc": [],
+                    }
+                }
+            },
+            {
+                "result": {
+                    "email": {
+                        "date": "2026-01-03T10:00:00+00:00",
+                        "to": [
+                            "alice@company.com",
+                            "bob@company.com",
+                            "carol@company.com",
+                        ],
+                        "cc": [],
+                    }
+                }
+            },
+        ],
+    )
+
+    result = BehavioralCommunicationAnomalyRule().evaluate(context)
+
+    assert result["behavioral_features"]["recipient_count_anomaly"] == 1
+
+    assert (
+        "Message contains an unusual number of recipients"
+        in result["indicators"]
+    )
+
+    assert result["behavioral_metrics"]["recipient_count"] == 5
+    assert (
+        result["behavioral_metrics"]["historical_recipient_count_median"]
+        == 2.0
+    )
+    assert result["behavioral_metrics"]["recipient_count_ratio"] == 2.5
+
+    assert result["behavioral_evidence"]["recipient_count_anomaly"] == {
+        "detected": 1,
+        "evidence": {
+            "current_recipient_count": 5,
+            "historical_recipient_count_median": 2.0,
+            "recipient_count_ratio": 2.5,
+        },
+    }
+
+
 def test_bec_007_builds_behavioral_feature_vector():
     """BEC-007 should expose normalized behavioral anomaly features."""
 
@@ -136,6 +361,7 @@ def test_bec_007_builds_behavioral_feature_vector():
         "recipient_relationship_anomaly": 0,
         "recipient_role_anomaly": 0,
         "recipient_group_anomaly": 0,
+        "recipient_count_anomaly": 0,
         "recipient_recency_anomaly": 0,
         "recipient_sequence_anomaly": 0,
     }
@@ -198,6 +424,9 @@ def test_bec_007_exposes_behavioral_deviation_metrics():
         "recipient_recency_ratios": {
             "alice@company.com": 2.0,
         },
+        "recipient_count": 1,
+        "historical_recipient_count_median": 1.0,
+        "recipient_count_ratio": 1.0,
     }
 
 
@@ -3493,7 +3722,7 @@ def test_bec_007_builds_behavioral_summary():
     assert result["behavioral_features"]["recipient_novelty"] == 1
 
     assert result["behavioral_anomaly_count"] == 5
-    assert result["behavioral_anomaly_ratio"] == 5 / 12
+    assert result["behavioral_anomaly_ratio"] == 5 / 13
     assert result["anomalous_behavioral_features"] == [
         "sending_hour_anomaly",
         "historical_hour_anomaly",
