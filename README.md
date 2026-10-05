@@ -441,9 +441,14 @@ The current implementation uses deterministic behavioral analysis. It can evalua
 - Historical sending frequency
 - Historical recipient frequency
 - Historical recipient co-occurrence
+- Historical recipient group relationships
 - Historical recipient role relationships
+- Historical individual recipient role relationships
 - Historical recipient count
+- Historical recipient recency
+- Historical recipient communication transitions
 - Historical CC usage and recipient count
+- Historical attachment usage
 
 #### Sending Hour
 
