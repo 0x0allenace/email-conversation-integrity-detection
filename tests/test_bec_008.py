@@ -1180,6 +1180,56 @@ def test_calculate_attachment_size_detects_smaller_than_historical_median():
     ]
 
 
+def test_calculate_attachment_size_accepts_upper_boundary():
+    rule = MessageContentAnomalyRule()
+
+    result = rule._calculate_attachment_size_anomaly(
+        [
+            {
+                "filename": "invoice.pdf",
+                "content_type": "application/pdf",
+                "size_bytes": 200,
+            }
+        ],
+        [
+            {
+                "attachments": [
+                    {
+                        "filename": "invoice.pdf",
+                        "size_bytes": 100,
+                    }
+                ]
+            },
+            {
+                "attachments": [
+                    {
+                        "filename": "invoice.pdf",
+                        "size_bytes": 100,
+                    }
+                ]
+            },
+            {
+                "attachments": [
+                    {
+                        "filename": "invoice.pdf",
+                        "size_bytes": 100,
+                    }
+                ]
+            },
+        ],
+    )
+
+    assert result["available"] is True
+    assert result["current_attachments"] == [
+        {
+            "filename": "invoice.pdf",
+            "size_bytes": 200,
+        }
+    ]
+    assert result["anomalies"] == []
+
+
+
 def test_evaluate_detects_attachment_novelty_anomaly():
     rule = MessageContentAnomalyRule()
 
