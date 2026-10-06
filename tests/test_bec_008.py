@@ -1553,6 +1553,83 @@ def test_calculate_attachment_size_ignores_invalid_current_attachments():
     ]
 
 
+def test_calculate_attachment_size_uses_per_filename_historical_baselines():
+    rule = MessageContentAnomalyRule()
+
+    result = rule._calculate_attachment_size_anomaly(
+        [
+            {
+                "filename": "invoice.pdf",
+                "content_type": "application/pdf",
+                "size_bytes": 201,
+            },
+            {
+                "filename": "contract.pdf",
+                "content_type": "application/pdf",
+                "size_bytes": 1500,
+            },
+        ],
+        [
+            {
+                "attachments": [
+                    {
+                        "filename": "invoice.pdf",
+                        "size_bytes": 100,
+                    },
+                    {
+                        "filename": "contract.pdf",
+                        "size_bytes": 1000,
+                    },
+                ]
+            },
+            {
+                "attachments": [
+                    {
+                        "filename": "invoice.pdf",
+                        "size_bytes": 100,
+                    },
+                    {
+                        "filename": "contract.pdf",
+                        "size_bytes": 1000,
+                    },
+                ]
+            },
+            {
+                "attachments": [
+                    {
+                        "filename": "invoice.pdf",
+                        "size_bytes": 100,
+                    },
+                    {
+                        "filename": "contract.pdf",
+                        "size_bytes": 1000,
+                    },
+                ]
+            },
+        ],
+    )
+
+    assert result["available"] is True
+    assert result["current_attachments"] == [
+        {
+            "filename": "invoice.pdf",
+            "size_bytes": 201,
+        },
+        {
+            "filename": "contract.pdf",
+            "size_bytes": 1500,
+        },
+    ]
+    assert result["anomalies"] == [
+        {
+            "filename": "invoice.pdf",
+            "current_size_bytes": 201,
+            "historical_observation_count": 3,
+            "historical_median_size_bytes": 100.0,
+        }
+    ]
+
+
 def test_calculate_attachment_size_requires_minimum_historical_observations():
     rule = MessageContentAnomalyRule()
 
