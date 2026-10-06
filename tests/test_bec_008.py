@@ -1479,6 +1479,80 @@ def test_calculate_attachment_size_ignores_invalid_historical_sizes():
     ]
 
 
+def test_calculate_attachment_size_ignores_invalid_current_attachments():
+    rule = MessageContentAnomalyRule()
+
+    result = rule._calculate_attachment_size_anomaly(
+        [
+            {
+                "filename": "invoice.pdf",
+                "content_type": "application/pdf",
+                "size_bytes": 201,
+            },
+            {
+                "filename": "invalid-string-size.pdf",
+                "content_type": "application/pdf",
+                "size_bytes": "201",
+            },
+            {
+                "filename": "invalid-bool-size.pdf",
+                "content_type": "application/pdf",
+                "size_bytes": True,
+            },
+            {
+                "content_type": "application/pdf",
+                "size_bytes": 201,
+            },
+            {
+                "filename": "missing-size.pdf",
+                "content_type": "application/pdf",
+            },
+        ],
+        [
+            {
+                "attachments": [
+                    {
+                        "filename": "invoice.pdf",
+                        "size_bytes": 100,
+                    }
+                ]
+            },
+            {
+                "attachments": [
+                    {
+                        "filename": "invoice.pdf",
+                        "size_bytes": 100,
+                    }
+                ]
+            },
+            {
+                "attachments": [
+                    {
+                        "filename": "invoice.pdf",
+                        "size_bytes": 100,
+                    }
+                ]
+            },
+        ],
+    )
+
+    assert result["available"] is True
+    assert result["current_attachments"] == [
+        {
+            "filename": "invoice.pdf",
+            "size_bytes": 201,
+        }
+    ]
+    assert result["anomalies"] == [
+        {
+            "filename": "invoice.pdf",
+            "current_size_bytes": 201,
+            "historical_observation_count": 3,
+            "historical_median_size_bytes": 100.0,
+        }
+    ]
+
+
 def test_calculate_attachment_size_requires_minimum_historical_observations():
     rule = MessageContentAnomalyRule()
 
