@@ -1211,6 +1211,52 @@ def test_attachment_novelty_anomaly_accepts_historical_filename():
     )
 
 
+def test_attachment_size_anomaly_requires_available_analysis():
+    assert (
+        MessageContentAnomalyRule._is_attachment_size_anomaly(
+            {
+                "available": False,
+                "anomalies": [
+                    {
+                        "filename": "invoice.pdf",
+                        "current_size_bytes": 201,
+                    }
+                ],
+            }
+        )
+        is False
+    )
+
+
+def test_attachment_size_anomaly_detects_anomalies():
+    assert (
+        MessageContentAnomalyRule._is_attachment_size_anomaly(
+            {
+                "available": True,
+                "anomalies": [
+                    {
+                        "filename": "invoice.pdf",
+                        "current_size_bytes": 201,
+                    }
+                ],
+            }
+        )
+        is True
+    )
+
+
+def test_attachment_size_anomaly_accepts_no_anomalies():
+    assert (
+        MessageContentAnomalyRule._is_attachment_size_anomaly(
+            {
+                "available": True,
+                "anomalies": [],
+            }
+        )
+        is False
+    )
+
+
 def test_calculate_attachment_size_detects_larger_than_historical_median():
     rule = MessageContentAnomalyRule()
 
