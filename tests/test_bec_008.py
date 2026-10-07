@@ -919,6 +919,81 @@ def test_evaluate_indicator_evidence_contains_analysis():
         assert "evidence" in indicator
         assert isinstance(indicator["evidence"], dict)
 
+
+def test_evaluate_detects_attachment_size_anomaly():
+    rule = MessageContentAnomalyRule()
+
+    context = DetectionContext(
+        email_data={
+            "subject": "Invoice Update",
+            "body": "Please review the updated invoice.",
+        },
+        identity={},
+        participants=[],
+        authentication={},
+        infrastructure={},
+        known_domain="supplier.com",
+        known_display_name="Bob Supplier",
+        known_participants=[],
+        known_hosts=[],
+        known_ip_addresses=[],
+        attachments=[
+            {
+                "filename": "invoice.pdf",
+                "content_type": "application/pdf",
+                "size_bytes": 201,
+            }
+        ],
+        historical_observations=[
+            {
+                "subject": "Invoice Update",
+                "body": "Please review the updated invoice.",
+                "attachments": [
+                    {
+                        "filename": "invoice.pdf",
+                        "size_bytes": 100,
+                    }
+                ],
+            },
+            {
+                "subject": "Invoice Update",
+                "body": "Please review the updated invoice.",
+                "attachments": [
+                    {
+                        "filename": "invoice.pdf",
+                        "size_bytes": 100,
+                    }
+                ],
+            },
+            {
+                "subject": "Invoice Update",
+                "body": "Please review the updated invoice.",
+                "attachments": [
+                    {
+                        "filename": "invoice.pdf",
+                        "size_bytes": 100,
+                    }
+                ],
+            },
+        ],
+    )
+
+    result = rule.evaluate(context)
+
+    assert result["matched"] is True
+
+    indicator_types = {
+        indicator["type"]
+        for indicator in result["indicators"]
+    }
+
+    assert "attachment_size_anomaly" in indicator_types
+    assert any(
+        indicator["type"] == "attachment_size_anomaly"
+        and "evidence" in indicator
+        for indicator in result["indicators"]
+    )
+
 def test_normalize_attachment_filename():
     rule = MessageContentAnomalyRule()
 
