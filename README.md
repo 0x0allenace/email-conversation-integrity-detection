@@ -31,10 +31,18 @@ The current implementation provides:
 - Historical recipient frequency analysis
 - Historical recipient co-occurrence analysis
 - Historical recipient role analysis
+- Historical individual recipient role analysis
+- Historical CC usage analysis
+- Historical recipient-count analysis
+- Historical recipient recency analysis
+- Historical recipient communication-transition analysis
+- Historical attachment-usage behavior analysis
 - Message content anomaly detection
 - Historical subject similarity analysis
 - Historical body similarity analysis
 - Historical body-length analysis
+- Historical attachment filename novelty analysis
+- Historical attachment size anomaly analysis
 - Explainable per-rule risk scoring
 - Structured detection indicators
 - FastAPI API
@@ -69,6 +77,8 @@ Business email attacks do not always look like traditional phishing. An attacker
 - Alter established recipient relationships or recipient roles
 - Reuse familiar message content in suspicious circumstances
 - Produce unusually long or short messages compared with historical communication
+- Introduce unfamiliar attachment filenames
+- Send familiar attachments with unusual file sizes
 
 **Example:**
 
@@ -98,13 +108,14 @@ The purpose of Email Conversation Integrity Detection is to identify these incon
 9. Detect abnormal communication behavior.
 10. Analyze historical sender and recipient communication patterns.
 11. Analyze historical message-content patterns.
-12. Generate explainable risk scores.
-13. Produce SOC-friendly detection results.
-14. Preserve structured detection evidence.
-15. Normalize detection results into SIEM events.
-16. Integrate detections with SIEM platforms.
-17. Provide an extensible foundation for behavioral and content-based anomaly detection.
-18. Provide a foundation for future machine-learning-based anomaly detection.
+12. Analyze historical attachment metadata.
+13. Generate explainable risk scores.
+14. Produce SOC-friendly detection results.
+15. Preserve structured detection evidence.
+16. Normalize detection results into SIEM events.
+17. Integrate detections with SIEM platforms.
+18. Provide an extensible foundation for behavioral and content-based anomaly detection.
+19. Provide a foundation for future machine-learning-based anomaly detection.
 
 ---
 
@@ -430,6 +441,8 @@ Identifies unusual communication behavior compared with an established sender or
 
 The current implementation uses deterministic behavioral analysis. It can evaluate both explicitly supplied behavioral baselines and historical observations retrieved for a known sender.
 
+> BEC-007 is operational, but behavioral detection expansion remains an active development area as additional historical communication signals are added and validated.
+
 **Current behavioral signals include:**
 
 - Typical sending hours
@@ -586,22 +599,20 @@ BEC-007 can compare the number of `Cc` recipients in the current message with th
 
 The historical CC baseline is calculated from the median number of normalized `Cc` recipients across qualifying historical observations.
 
-Example:
+**Example:**
 
 ```text
 Historical behavior:
   Typical CC count: 2
-
 Observed:
   CC count: 5
-
 Indicator:
   - Message contains an unusual CC recipient count
 ```
 
 The signal uses deterministic `2x` and `0.5x` boundaries around the historical median.
 
-For example:
+**For example:**
 
 ```text
 Historical median: 2
@@ -641,34 +652,30 @@ This signal is independent of the overall recipient-count anomaly. A message can
 
 BEC-007 can compare whether the current message contains an attachment with the sender's historical attachment usage.
 
-This signal evaluates **attachment usage behavior only**. It does not analyze attachment filenames, attachment sizes, or attachment content. Those signals remain part of BEC-008.
+> This signal evaluates attachment usage behavior only. It does not analyze attachment filenames, attachment sizes, or attachment content. Those signals remain part of BEC-008.
 
 The historical attachment usage rate is calculated as:
 
 ```text
 Historical attachment usage rate =
-
   Messages with attachments /
-
   Qualifying historical observations
 ```
 
-The signal requires at least three valid historical attachment observations before establishing a behavioral baseline. An explicit empty `attachments` list is treated as a valid observation.
+The signal requires at least three valid historical attachment observations before establishing a behavioral baseline. An explicit empty attachments list is treated as a valid observation.
 
 **For example:**
 
 ```text
 Historical behavior:
   Attachment usage: 0%
-
 Observed:
   Current message contains an attachment
-
 Indicator:
   - Message contains an unusual attachment usage pattern
 ```
 
-The signal uses the existing deterministic `25%` behavioral threshold:
+The signal uses the existing deterministic 25% behavioral threshold:
 
 ```text
 Historical attachment usage: 20%
@@ -692,14 +699,14 @@ Result:
   No attachment usage anomaly
 ```
 
-Therefore:
+**Therefore:**
 
-- A current attachment is anomalous when historical attachment usage is below `25%`.
-- A current message without an attachment is anomalous when historical attachment usage is above `75%`.
-- Exactly `25%` and `75%` are treated as normal boundaries.
+- A current attachment is anomalous when historical attachment usage is below 25%.
+- A current message without an attachment is anomalous when historical attachment usage is above 75%.
+- Exactly 25% and 75% are treated as normal boundaries.
 - Insufficient historical attachment observations do not produce an attachment usage anomaly.
 
-BEC-007 therefore detects changes in **attachment usage behavior**, while BEC-008 remains responsible for **attachment filename novelty** and **attachment size anomalies**.
+BEC-007 therefore detects changes in attachment usage behavior, while BEC-008 remains responsible for attachment filename novelty and attachment size anomalies.
 
 #### Historical Recipient Co-Occurrence
 
@@ -805,19 +812,44 @@ The detection result preserves behavioral evidence used by the rule, including a
 
 Detects suspicious differences between the current message content and historical messages associated with the same conversation or sender.
 
-The current implementation uses deterministic text comparison rather than machine learning.
+The current implementation uses deterministic text and attachment-metadata comparison rather than machine learning.
 
-BEC-008 evaluates five independent content signals:
+BEC-008 currently evaluates five independent content signals:
 
-- Subject similarity
-- Body similarity
-- Body length
-- Attachment filename novelty
-- Attachment size anomaly
+1. Subject similarity
+2. Body similarity
+3. Body length
+4. Attachment filename novelty
+5. Attachment size anomaly
 
-Historical observations must contain sufficient valid subject/body data before content comparison is performed.
+Historical observations must contain sufficient valid data before the corresponding content comparison is performed.
 
-The current implementation requires a minimum of 3 qualifying historical observations.
+The current implementation uses a minimum of 3 qualifying historical observations for the applicable baseline.
+
+#### BEC-008 Detection Model
+
+```text
+                    Current Message
+                           │
+            ┌──────────────┼──────────────┐
+            ▼              ▼              ▼
+         Subject          Body       Attachments
+            │              │          ┌────┴────┐
+            ▼              ▼          ▼         ▼
+        Similarity      Similarity  Filename   Size
+            │              │         Novelty  Anomaly
+            └──────────────┼──────────┴─────────┘
+                           ▼
+                  Body Length Analysis
+                           │
+                           ▼
+                  Content Indicators
+                           │
+                           ▼
+                    BEC-008 Result
+```
+
+Each signal is evaluated independently. A single message may therefore produce more than one content anomaly indicator.
 
 #### Subject Similarity
 
@@ -898,6 +930,8 @@ Indicator:
 
 A zero historical median is handled separately so that a non-empty current body can still be identified as anomalous.
 
+The historical median supports both odd and even numbers of qualifying observations.
+
 #### Attachment Filename Novelty
 
 BEC-008 compares the filenames of current attachments against filenames observed in qualifying historical observations.
@@ -910,17 +944,19 @@ Attachment filenames are normalized before comparison. Normalization includes:
 
 A current attachment filename is considered novel when it has not been observed in the historical attachment baseline.
 
-Attachment filename novelty analysis requires a minimum of 3 historical observations that contain attachment metadata. Historical observations without an `attachments` field are not treated as explicit no-attachment observations and are excluded from the attachment baseline.
+Attachment filename novelty analysis requires at least 3 historical observations containing valid attachment metadata.
+
+Historical observations without an `attachments` field, or without a valid attachment list, do not contribute to the attachment filename baseline.
+
+Invalid attachment entries and attachment entries with missing or blank filenames are ignored.
 
 ```text
 Historical attachment filenames:
   invoice.pdf
   invoice.pdf
   invoice.pdf
-
 Observed:
   bank-details.pdf
-
 Indicator:
   - Attachment filename is novel relative to the historical baseline
 ```
@@ -931,12 +967,14 @@ Indicator:
 
 BEC-008 compares the size of a current attachment against the historical size baseline for the same normalized filename.
 
-Attachment size analysis:
+**Attachment size analysis:**
 
 - Groups historical attachment sizes by normalized filename
 - Requires at least 3 valid historical size observations for the same filename
 - Uses the historical median size as the baseline
 - Ignores historical attachment entries with missing or invalid size metadata
+- Ignores boolean values supplied as `size_bytes`
+- Ignores current attachment entries with invalid size metadata
 - Flags the current attachment when its size is more than 2.0x the historical median
 - Flags the current attachment when its size is less than 0.5x the historical median
 
@@ -946,19 +984,20 @@ Historical attachment:
   100 KB
   110 KB
   105 KB
-
 Historical median:
   105 KB
-
 Observed:
   invoice.pdf
   300 KB
-
 Indicator:
   - Attachment size differs substantially from the historical baseline
 ```
 
-Attachment filename novelty and attachment size anomaly are evaluated independently. A familiar filename can therefore still produce a size anomaly, while a novel filename is handled by the separate filename-novelty signal.
+The baseline is calculated independently for each normalized attachment filename. This means that `invoice.pdf` is compared against the historical baseline for `invoice.pdf`, rather than against a global attachment-size baseline.
+
+A historical median size of zero is handled separately. A positive current size is treated as anomalous when the established historical median is zero.
+
+> Attachment filename novelty and attachment size anomaly are evaluated independently. A familiar filename can therefore still produce a size anomaly, while a novel filename is handled by the separate filename-novelty signal.
 
 > The current implementation analyzes attachment metadata only. It does not inspect attachment contents or perform malware analysis.
 
@@ -985,15 +1024,55 @@ Indicators:
 
 The detection result preserves structured evidence for the individual content signals.
 
+#### Structured BEC-008 Evidence
+
+When an anomaly is detected, BEC-008 preserves the underlying analysis in the indicator evidence.
+
+Depending on the signal, evidence can include:
+
+- Current normalized subject
+- Historical subject count
+- Maximum subject similarity
+- Current normalized body
+- Historical body count
+- Maximum body similarity
+- Current body length
+- Historical median body length
+- Current attachment filenames
+- Historical attachment filenames
+- Novel attachment filenames
+- Historical attachment observation count
+- Current attachment sizes
+- Historical median attachment sizes
+- Attachment size anomalies
+
+This allows downstream systems to investigate the reason for the detection rather than receiving only a boolean result.
+
 #### Historical Content Baseline
 
 BEC-008 uses historical observations supplied to the detection engine.
 
 The historical observations should represent legitimate communication associated with the sender or conversation being evaluated.
 
+The `DetectionContext` contract defines historical observations as:
+
+```text
+list[dict[str, Any]]
+```
+
+Individual observations are therefore expected to be structured dictionaries containing fields such as:
+
+```text
+subject
+body
+attachments
+```
+
+The implementation validates individual fields and metadata within those observations before using them in the relevant baseline.
+
 > Historical content analysis depends on the quality and representativeness of the historical baseline. A poisoned, incomplete, or unrelated baseline can reduce detection accuracy.
 
-#### Current Scope
+#### Current BEC-008 Scope
 
 BEC-008 currently analyzes:
 
@@ -1003,9 +1082,22 @@ BEC-008 currently analyzes:
 - Historical body similarity
 - Historical body length
 - Attachment filename novelty
-- Attachment size anomalies based on historical attachment metadata
+- Attachment size anomalies
+- Per-filename attachment size baselines
+- Attachment metadata validity
 
-Attachment analysis is currently limited to filename novelty and size comparison based on historical attachment metadata. Attachment contents are not inspected.
+**BEC-008 does not currently perform:**
+
+- Semantic language-model analysis
+- Attachment content inspection
+- Malware scanning
+- PDF/document content analysis
+- Image analysis
+- OCR
+- URL reputation analysis
+- Threat-intelligence enrichment
+
+Those capabilities remain future work.
 
 ---
 
@@ -1399,14 +1491,36 @@ Run the complete test suite:
 python3 -m pytest -v
 ```
 
-**Current regression baseline:**
+For a concise regression run:
+
+```bash
+pytest -q
+```
+
+**Current verified regression baseline:**
 
 ```text
-333 passed
+386 passed
 1 warning
 ```
 
-The current warning originates from a Starlette/httpx deprecation in the installed testing dependency stack. It does not currently cause test failures.
+The current BEC-008 targeted suite contains:
+
+```text
+81 passed
+```
+
+The project-wide regression currently covers 386 tests across the API, database, email-analysis, detection-rule, scoring, engine, and SIEM components.
+
+The single warning currently originates from the installed Starlette/httpx testing dependency stack:
+
+```text
+StarletteDeprecationWarning:
+Using `httpx` with `starlette.testclient` is deprecated;
+install `httpx2` instead.
+```
+
+It does not currently cause test failures.
 
 The test suite covers:
 
@@ -1433,11 +1547,53 @@ The test suite covers:
 - Historical recipient frequency analysis
 - Historical recipient co-occurrence analysis
 - Historical recipient role analysis
+- Historical individual recipient role analysis
+- Historical CC usage
+- Historical attachment usage behavior
 - Message content anomaly detection
 - Historical subject similarity analysis
 - Historical body similarity analysis
 - Historical body-length anomaly detection
+- Historical attachment filename novelty
+- Historical attachment size anomaly detection
 - Structured detection indicators
+
+### BEC-008 Test Coverage
+
+The BEC-008 suite currently contains 81 tests covering:
+
+- Subject normalization
+- Subject similarity
+- Subject anomaly detection
+- Body normalization
+- Body similarity
+- Body anomaly detection
+- Body-length analysis
+- Odd and even historical medians
+- Fractional historical medians
+- Zero historical median handling
+- Body-length boundary conditions
+- Insufficient historical observations
+- Attachment filename normalization
+- Attachment filename novelty
+- Invalid current attachment metadata
+- Invalid historical attachment metadata
+- Attachment novelty baseline requirements
+- Attachment size anomaly predicates
+- Larger attachment-size anomalies
+- Smaller attachment-size anomalies
+- Attachment-size boundaries
+- Zero historical attachment-size medians
+- Invalid historical attachment sizes
+- Invalid current attachment sizes
+- Per-filename attachment-size baselines
+- Minimum historical observations
+- Evaluate-level attachment-size anomaly detection
+- Evaluate-level normal attachment-size behavior
+- Multiple simultaneous content anomalies
+- Structured indicator evidence
+
+The BEC-008 suite has been fully regression-tested against the complete project suite.
 
 ---
 
@@ -1449,13 +1605,53 @@ Before committing changes, the project can be validated with:
 python3 -m pytest -v
 ```
 
-Check staged changes for whitespace errors:
+For a concise regression run:
+
+```bash
+pytest -q
+```
+
+Check working-tree status:
+
+```bash
+git status --short
+```
+
+Check for whitespace errors:
+
+```bash
+git diff --check
+```
+
+For staged changes:
 
 ```bash
 git diff --cached --check
 ```
 
 The project follows incremental development with focused tests followed by full regression testing before commits.
+
+The preferred development workflow is:
+
+```text
+Inspect
+   ↓
+Identify one concrete gap
+   ↓
+Make one isolated change
+   ↓
+Run targeted tests
+   ↓
+Run full regression
+   ↓
+Review diff
+   ↓
+Commit
+   ↓
+Push
+   ↓
+Verify repository state
+```
 
 ---
 
@@ -1684,6 +1880,8 @@ The current MVP has several limitations:
 - Detection quality depends on the quality of the supplied baseline.
 - Historical behavioral detection requires sufficient historical observations.
 - Historical content detection requires sufficient qualifying subject/body observations.
+- Attachment filename novelty requires sufficient historical attachment observations.
+- Attachment size anomaly detection requires sufficient valid historical size observations for the same filename.
 - Deterministic text similarity does not provide semantic understanding.
 - Subject and body similarity can produce false positives when legitimate communication changes substantially.
 - A declared email timezone offset does not establish physical sender location.
@@ -1691,9 +1889,11 @@ The current MVP has several limitations:
 - Infrastructure analysis is currently based on observed hosts and IP addresses.
 - Sender infrastructure reputation is not currently implemented.
 - BEC-008 attachment analysis is limited to metadata-based filename novelty and size comparison; attachment contents are not inspected.
+- BEC-008 does not currently perform malware analysis or document-content inspection.
 - Machine-learning-based anomaly detection has not yet been integrated into the production detection path.
 - Historical baseline poisoning is a potential risk if untrusted observations are introduced into the baseline.
 - Detection scores are explainable indicators, not definitive proof of compromise.
+- Historical content and behavioral detections can produce false positives when legitimate communication patterns change significantly.
 
 These limitations are expected to be addressed incrementally as the project evolves.
 

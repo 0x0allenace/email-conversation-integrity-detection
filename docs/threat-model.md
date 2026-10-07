@@ -8,13 +8,25 @@ The threat model focuses on attacks where an adversary attempts to make a malici
 
 The system currently analyzes `.eml` messages using deterministic, explainable detection rules. Historical sender observations can provide additional behavioral and message-content evidence when sufficient historical data is available.
 
+**The current detection model combines evidence from:**
+
+- Sender identity
+- Email headers
+- Authentication results
+- Conversation participants
+- Sender infrastructure
+- Communication behavior
+- Historical message content
+- Attachment metadata
+- Historical sender observations
+
 ---
 
 ## Security Objective
 
 **Primary objective:**
 
-> Identify inconsistencies between an incoming email and the established identity, participants, infrastructure, authentication information, communication behavior, and historical message-content patterns associated with a trusted conversation.
+> Identify inconsistencies between an incoming email and the established identity, participants, infrastructure, authentication information, communication behavior, historical message-content patterns, and attachment patterns associated with a trusted conversation.
 
 The system is designed to provide explainable evidence that can support SOC investigation.
 
@@ -34,13 +46,14 @@ Relevant assets include:
 - Conversation history
 - Historical sender observations
 - Historical message-content patterns
+- Historical attachment metadata
 - Sender infrastructure information
 - Detection results
 - Risk scores
 - SIEM events
 - Persisted analysis records
 
-> Historical observations may contain sensitive communication metadata and should therefore be treated as security-relevant information.
+> Historical observations may contain sensitive communication metadata, message-content information, and attachment metadata and should therefore be treated as security-relevant information.
 
 ---
 
@@ -133,31 +146,43 @@ The current implementation uses deterministic behavioral analysis based on suppl
 - Typical sending day
 - Typical timezone offset
 - Historical sending-hour range
-- Historical sending frequency
+- Historical sender behavior
 - Historical recipient behavior
+- Historical sending frequency
 - Historical recipient frequency
 - Historical recipient co-occurrence
+- Historical recipient group relationships
 - Historical recipient role relationships
+- Historical individual recipient role relationships
+- Historical recipient count
+- Historical recipient recency
+- Historical recipient communication transitions
+- Historical CC usage and recipient count
+- Historical attachment usage
 
 Historical analysis requires sufficient valid observations for the relevant signal. A minimum of three qualifying historical observations is generally required before historical behavioral analysis is established.
 
 **Potential detection:** BEC-007 — Behavioral Communication Anomaly
 
+> BEC-007 is currently implemented using deterministic behavioral comparisons. It remains an expanding rule as additional historical behavioral signals are validated and refined.
+
 ### T8 — Message Content Anomaly
 
-An attacker changes the content of a message so that it differs substantially from the sender's established historical message patterns.
+An attacker changes the content or attachment characteristics of a message so that they differ substantially from the sender's established historical communication patterns.
 
-**Current BEC-008 content signals include:**
+**Current BEC-008 signals include:**
 
 - Subject similarity anomaly
 - Body similarity anomaly
 - Body length anomaly
+- Attachment filename novelty
+- Attachment size anomaly
 
 BEC-008 uses deterministic historical comparison rather than machine learning or external NLP services.
 
 Subject and body similarity are evaluated using normalized content and Python's `difflib.SequenceMatcher`.
 
-**The current thresholds are:**
+**Current thresholds include:**
 
 ```text
 Subject similarity threshold:    0.50
@@ -165,6 +190,14 @@ Body similarity threshold:       0.50
 Body length ratio threshold:     2.0
 Minimum historical observations: 3
 ```
+
+For attachment filename novelty, historical observations must contain usable attachment metadata, with a minimum of three qualifying historical observations required before the historical attachment baseline is established.
+
+Attachment filenames are normalized before comparison. Invalid attachment metadata, including malformed or empty filename entries, is ignored where applicable.
+
+For attachment size analysis, historical sizes are evaluated against a per-filename historical baseline. A minimum of three valid historical size observations for the same normalized filename is required before an attachment-size baseline is established.
+
+The attachment-size comparison uses the historical median and identifies significant deviations from the established baseline.
 
 **Potential examples include:**
 
@@ -186,9 +219,11 @@ Current message:
   and process the outstanding payment today.
 ```
 
+An attachment-related anomaly may also occur when a sender introduces a previously unseen attachment filename or uses an attachment whose size differs substantially from its established historical baseline.
+
 **Potential detection:** BEC-008 — Message Content Anomaly
 
-> BEC-008 does not currently analyze attachments.
+> BEC-008 currently analyzes attachment metadata such as filenames and sizes. It does not determine whether an attachment is malicious based on its file contents.
 
 ---
 
@@ -197,33 +232,40 @@ Current message:
 The main attack surface includes:
 
 ```text
-                    Email Message
-                         │
-             ┌───────────┼───────────┐
-             ▼           ▼           ▼
-          Headers     Identity    Content
-             │           │           │
-             └───────────┼───────────┘
-                         │
-                         ▼
-                Historical Baseline
-                         │
-             ┌───────────┴───────────┐
-             ▼                       ▼
-      Behavioral Evidence     Content Evidence
-             │                       │
-             └───────────┬───────────┘
-                         ▼
-                  Analysis Engine
-                         │
-             ┌───────────┴───────────┐
-             ▼                       ▼
-         Database                   SIEM
+                         Email Message
+                              │
+              ┌───────────────┼────────────────┐
+              ▼               ▼                ▼
+           Headers         Identity         Content
+              │               │                │
+              │               │          ┌─────┴─────┐
+              │               │          ▼           ▼
+              │               │        Body      Attachments
+              │               │          │           │
+              └───────────────┼──────────┴───────────┘
+                              │
+                              ▼
+                     Historical Baseline
+                              │
+              ┌───────────────┼────────────────┐
+              ▼               ▼                ▼
+       Behavioral        Content Evidence   Attachment
+        Evidence                              Evidence
+              │               │                │
+              └───────────────┼────────────────┘
+                              ▼
+                       Analysis Engine
+                              │
+              ┌───────────────┴───────────────┐
+              ▼                               ▼
+          Database                           SIEM
 ```
 
 The email itself is untrusted input.
 
 Historical observations also represent an important security boundary because manipulation or corruption of historical analysis data can influence behavioral and content baselines.
+
+Attachment metadata is treated as untrusted input. The current attachment analysis focuses on normalized filenames and historical size patterns rather than executing or analyzing attachment contents.
 
 External integrations introduce additional security considerations.
 
@@ -232,7 +274,7 @@ External integrations introduce additional security considerations.
 ## Trust Boundaries
 
 **Email Input Boundary**
-`.eml` files enter the application through the API. The application should treat email content as untrusted input.
+`.eml` files enter the application through the API. The application should treat email content, headers, and attachment metadata as untrusted input.
 
 **Historical Baseline Boundary**
 Historical observations are retrieved from persisted analysis records and supplied to the detection engine by the application service. The detection rules should not directly access the database.
@@ -242,7 +284,7 @@ Historical observations are retrieved from persisted analysis records and suppli
 **Database Boundary**
 Analysis results are persisted to PostgreSQL. Database credentials must be protected and should not be committed to source control.
 
-Persisted analysis records may contain email metadata and historical observations that require appropriate access controls.
+Persisted analysis records may contain email metadata, message-content information, attachment metadata, and historical observations that require appropriate access controls.
 
 **SIEM Boundary**
 Detection events may leave the application and be transmitted to external SIEM infrastructure. SIEM credentials and tokens must be protected.
@@ -257,6 +299,7 @@ The current system assumes:
 - Known participant information is supplied by a trusted source.
 - Known infrastructure information is reasonably accurate.
 - Historical observations are sufficiently representative of legitimate sender behavior when used as a baseline.
+- Historical attachment observations are sufficiently representative when used as attachment baselines.
 - The API and database environment are appropriately protected.
 - SIEM credentials are stored securely.
 - The analysis host is trusted.
@@ -269,7 +312,7 @@ The current system assumes:
 The detector itself can also be targeted.
 
 **Malformed Email Input**
-Attackers may provide malformed or unusual email messages. The parser should therefore handle malformed input safely and avoid assuming that headers are always present.
+Attackers may provide malformed or unusual email messages. The parser should therefore handle malformed input safely and avoid assuming that headers, message bodies, or attachment metadata are always present.
 
 **Baseline Manipulation**
 If an attacker can influence the known baseline or historical observations, detection accuracy may be reduced.
@@ -277,7 +320,7 @@ If an attacker can influence the known baseline or historical observations, dete
 > This is particularly relevant to BEC-007 and BEC-008 because both depend on historical observations when performing behavioral or content analysis.
 
 **Historical Baseline Poisoning**
-An attacker who can influence persisted observations could attempt to introduce abnormal behavior or message content into the historical baseline.
+An attacker who can influence persisted observations could attempt to introduce abnormal behavior, message content, or attachment patterns into the historical baseline.
 
 Over time, polluted observations could make malicious activity appear normal.
 
@@ -291,6 +334,11 @@ Persisted email analysis may contain sensitive metadata. Database access should 
 
 **Alert Flooding**
 An attacker could generate large numbers of suspicious messages to increase alert volume. Future implementations may require rate limiting, aggregation, and alert deduplication.
+
+**Attachment Metadata Manipulation**
+An attacker could deliberately vary attachment filenames or sizes to evade historical comparisons or generate excessive alerts.
+
+> The current BEC-008 implementation uses minimum observation requirements, normalization, and per-filename historical baselines to reduce the impact of insufficient or malformed attachment metadata.
 
 ---
 
@@ -308,10 +356,13 @@ Current and planned mitigations include:
 | Conversation hijacking | Multi-indicator conversation analysis |
 | Behavioral anomalies | Behavioral baseline and historical observation comparison |
 | Message content anomalies | Historical subject, body, and body-length comparison |
+| Attachment filename anomalies | Historical normalized attachment filename comparison |
+| Attachment size anomalies | Per-filename historical size baseline comparison |
 | Historical baseline manipulation | Trusted baseline sources and controlled observation flow |
 | Credential exposure | Environment-based configuration |
 | Detection opacity | Explainable detection results |
 | Malformed input | Structured parsing and validation |
+| Insufficient historical data | Minimum observation requirements before baseline-dependent detection |
 
 ---
 
@@ -328,11 +379,14 @@ Important limitations include:
 - Behavioral analysis is deterministic and depends on the quality and availability of baseline data.
 - Historical behavioral analysis generally requires a minimum of three qualifying observations for the relevant signal.
 - Message-content analysis requires sufficient historical message observations before comparison can be established.
-- Historical observations may not fully represent a sender's legitimate communication behavior or content.
+- Attachment filename novelty analysis requires sufficient historical observations containing usable attachment metadata.
+- Attachment size analysis requires sufficient valid historical size observations for the relevant normalized filename.
+- Historical observations may not fully represent a sender's legitimate communication behavior, content, or attachment patterns.
 - Historical baseline poisoning is not currently detected automatically.
 - BEC-008 uses deterministic textual comparison rather than semantic understanding.
 - Subject and body similarity thresholds may not capture all meaningful content changes.
-- Attachments are currently outside the scope of BEC-008.
+- Attachment filename and size anomalies do not establish that an attachment is malicious.
+- The current BEC-008 attachment analysis does not inspect attachment contents for malware or other malicious payloads.
 - External threat-intelligence enrichment is not currently required for detection.
 - Machine-learning anomaly detection has not yet been implemented.
 
@@ -353,6 +407,11 @@ Future development may extend the threat model to include:
 - Automated mailbox monitoring
 - Historical baseline poisoning detection
 - Advanced semantic message-content analysis
-- Attachment-based threat detection
+- Attachment content analysis
+- Malicious attachment detection
+- Attachment hash and reputation analysis
+- Automated attachment sandboxing
+- Advanced behavioral anomaly detection
+- Machine-learning-assisted anomaly detection
 
 These capabilities will be considered as the system expands beyond its current `.eml` analysis and deterministic detection scope.

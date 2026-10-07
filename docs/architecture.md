@@ -119,6 +119,7 @@ Relevant information includes:
 - Authentication-related headers
 - Received headers
 - Message body information
+- Attachment metadata
 
 ### Identity Analysis
 
@@ -211,27 +212,39 @@ BEC-007 provides deterministic behavioral analysis using explicit behavioral bas
 - Typical sending day
 - Sender-declared timezone offset
 - Historical sending-hour range
-- Historical sending frequency
+- Historical sender behavior
 - Historical recipient behavior
+- Historical sending frequency
 - Historical recipient frequency
 - Historical recipient co-occurrence
+- Historical recipient group relationships
 - Historical recipient role relationships
+- Historical individual recipient role relationships
+- Historical recipient count
+- Historical recipient recency
+- Historical recipient communication transitions
+- Historical CC usage and recipient count
+- Historical attachment usage
 
 The rule requires sufficient valid historical observations before historical analysis is established.
 
 BEC-007 does not directly access the database. Historical observations are retrieved by the application layer and supplied to the detection engine.
 
+> The behavioral analysis is intentionally baseline-aware: anomalies are evaluated against the communication patterns represented by the supplied historical observations rather than against arbitrary global assumptions.
+
 ### Message Content Analysis
 
-BEC-008 provides deterministic analysis of message content against an established historical message baseline.
+BEC-008 provides deterministic analysis of message content and attachment behavior against an established historical message baseline.
 
-**Current content signals include:**
+**Current content and attachment signals include:**
 
 - Subject similarity anomaly
 - Body similarity anomaly
 - Body length anomaly
+- Attachment filename novelty
+- Attachment size anomaly
 
-BEC-008 requires a minimum of three valid historical observations before the relevant historical content signal is evaluated.
+BEC-008 requires a minimum of three qualifying historical observations before the relevant historical content signal is evaluated.
 
 Subject and body similarity use deterministic sequence comparison based on Python's standard-library `difflib.SequenceMatcher`.
 
@@ -241,9 +254,57 @@ Subject and body similarity use deterministic sequence comparison based on Pytho
 - Body similarity threshold: 0.50
 - Body length ratio threshold: 2.0
 
-BEC-008 is currently focused on message text content. Attachment analysis is outside the current scope.
+#### Attachment Filename Novelty
 
-Like BEC-007, BEC-008 remains independent of direct database access. Historical message observations are supplied to the detection engine as structured data by the application layer.
+BEC-008 compares normalized attachment filenames in the current message against filenames observed in qualifying historical observations.
+
+Attachment filename novelty requires at least three historical observations containing attachment metadata before the historical attachment baseline is considered available.
+
+Invalid attachment metadata is ignored during the analysis. This includes:
+
+- Non-dictionary attachment entries
+- Empty or invalid attachment filenames
+- Historical observations without a valid attachment list
+- Historical attachment entries without a valid normalized filename
+
+The rule therefore distinguishes between a genuinely novel attachment filename and insufficient or invalid historical attachment data.
+
+#### Attachment Size Anomaly
+
+BEC-008 also evaluates attachment sizes against historical size baselines.
+
+Attachment size analysis is performed per normalized attachment filename. The rule requires at least three valid historical size observations for the same normalized filename before evaluating the current attachment size.
+
+Historical size baselines use the median historical size.
+
+A current attachment size is considered anomalous when it is:
+
+- Greater than 2.0 × the historical median, or
+- Less than 0.5 × the historical median
+
+Exact boundary values are treated as normal.
+
+Invalid attachment sizes are ignored rather than treated as anomalous. This includes non-numeric values and boolean values.
+
+A zero historical median is handled explicitly: a non-zero current attachment size is treated as anomalous when the historical baseline is zero.
+
+> The attachment analysis is therefore baseline-aware and filename-specific rather than relying on a single global attachment-size threshold.
+
+#### Historical Observation Requirements
+
+BEC-008 does not treat every historical record as automatically usable.
+
+Historical observations must contain sufficient valid information for the specific signal being evaluated. Different signals therefore have different effective requirements:
+
+| Signal | Historical baseline requirement |
+|---|---|
+| Subject similarity | Minimum 3 valid historical observations |
+| Body similarity | Minimum 3 valid historical observations |
+| Body length | Minimum 3 valid historical observations |
+| Attachment filename novelty | Minimum 3 historical observations containing attachment metadata |
+| Attachment size anomaly | Minimum 3 valid size observations for the same normalized filename |
+
+Like BEC-007, BEC-008 remains independent of direct database access. Historical message observations are retrieved by the application layer and supplied to the detection engine as structured data.
 
 ### Risk Scoring
 
@@ -322,7 +383,7 @@ The event can contain:
 - Source
 - Schema version
 
-Structured detection indicators can contain either simple textual evidence or structured evidence objects, allowing rules such as BEC-008 to preserve detailed content-analysis evidence.
+Structured detection indicators can contain either simple textual evidence or structured evidence objects, allowing rules such as BEC-008 to preserve detailed content- and attachment-analysis evidence.
 
 ### SIEM Service
 
@@ -425,3 +486,12 @@ Deterministic detection rules provide the foundation before introducing machine-
 
 **Historical Baseline Analysis**
 Behavioral and message-content anomalies are evaluated against explicitly supplied baselines and persisted historical observations rather than relying on direct database access from individual detection rules.
+
+**Signal-Specific Baselines**
+Historical data is evaluated according to the requirements of each detection signal. A baseline is only considered available when sufficient qualifying observations exist for that specific signal.
+
+**Invalid Data Does Not Automatically Become Suspicious**
+Malformed or unusable historical and current metadata is ignored where appropriate rather than automatically being interpreted as malicious behavior. This prevents invalid input from being confused with a genuine behavioral or content anomaly.
+
+**Evidence First**
+Detection results preserve structured evidence describing why a rule matched. This supports analyst investigation, SIEM correlation, testing, and future explainable machine-learning extensions.

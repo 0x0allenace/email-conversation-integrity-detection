@@ -4,6 +4,8 @@
 
 Email Conversation Integrity Detection uses deterministic detection rules to identify suspicious inconsistencies in email identity, authentication, infrastructure, conversation participation, communication behavior, and message content.
 
+The detection engine follows an evidence-first and baseline-aware approach. Rules compare the analyzed message against explicitly supplied trusted information and, where available, persisted historical observations.
+
 Each rule produces structured detection information including:
 
 - Rule ID
@@ -13,6 +15,22 @@ Each rule produces structured detection information including:
 - Risk score
 - Indicators
 - Details
+- Structured evidence where applicable
+
+The current detection engine contains eight rules:
+
+| Rule | Name | Severity | Status |
+|---|---|---|---|
+| BEC-001 | Lookalike Domain | — | Implemented |
+| BEC-002 | Reply-To Mismatch | — | Implemented |
+| BEC-003 | Thread Participant Anomaly | — | Implemented |
+| BEC-004 | Authentication Anomaly | — | Implemented |
+| BEC-005 | Sender Infrastructure Anomaly | — | Implemented |
+| BEC-006 | Conversation Hijacking | — | Implemented |
+| BEC-007 | Behavioral Communication Anomaly | MEDIUM | Operational / Expanding |
+| BEC-008 | Message Content Anomaly | MEDIUM | Operational |
+
+BEC-007 and BEC-008 use historical observations supplied by the application layer. Individual detection rules do not directly access the database.
 
 ---
 
@@ -25,16 +43,28 @@ Known domain:    supplier.com
 Observed domain: supp1ier.com
 ```
 
-**Detection Logic:** The observed sender domain is compared with the known domain. A sufficiently similar but different domain can produce a detection.
+### Detection Logic
 
-**Indicators:**
+The observed sender domain is compared with the known sender domain.
+
+A sufficiently similar but different domain can produce a detection.
+
+The rule is intended to identify visual or structural domain similarities that may support sender impersonation.
+
+### Indicators
+
+Potential evidence includes:
 
 - Known domain
 - Observed domain
 - Domain mismatch
 - Domain similarity
 
-**Security Context:** Lookalike domains can be used to impersonate trusted organizations or business partners.
+### Security Context
+
+Lookalike domains can be used to impersonate trusted organizations, suppliers, customers, or business partners.
+
+A domain similarity detection is an indicator and should be interpreted alongside sender identity, authentication, infrastructure, conversation, and behavioral evidence.
 
 ---
 
@@ -47,16 +77,26 @@ From:     John Smith <john@supplier.com>
 Reply-To: john.supplier@gmail.com
 ```
 
-**Detection Logic:** The Reply-To address is compared against the sender identity. A mismatch can become a detection indicator.
+### Detection Logic
 
-**Indicators:**
+The Reply-To address is compared against the apparent sender identity.
+
+A mismatch can become a detection indicator when the reply destination differs from the expected sender identity.
+
+### Indicators
+
+Potential evidence includes:
 
 - Sender email
 - Reply-To email
 - Sender domain
 - Reply-To domain
 
-**Security Context:** Attackers may manipulate Reply-To addresses to redirect responses to an address they control.
+### Security Context
+
+Attackers may manipulate Reply-To addresses to redirect responses to an address they control while preserving a familiar sender identity in the visible From field.
+
+> A Reply-To mismatch is not automatically malicious because legitimate forwarding, support, ticketing, and delegated-mail workflows can also produce legitimate mismatches.
 
 ---
 
@@ -69,11 +109,35 @@ Known participants: alice@company.com, bob@supplier.com
 Observed:           alice@company.com, bob@supplier.com, attacker@example.net
 ```
 
-**Detection Logic:** Observed participants are compared against the supplied participant baseline. A participant that is not present in the baseline can trigger the rule.
+### Detection Logic
 
-> **Important:** The participant baseline must contain all expected legitimate participants. An incomplete baseline can produce false positives.
+Observed conversation participants are compared against the supplied participant baseline.
 
-**Security Context:** Unexpected participants may indicate conversation manipulation, unauthorized forwarding, or thread hijacking.
+A participant that is not present in the baseline can trigger the rule.
+
+> **Important:** The participant baseline should contain all expected legitimate participants. An incomplete baseline can produce false positives.
+
+### Indicators
+
+Potential evidence includes:
+
+- Known participants
+- Observed participants
+- Unexpected participants
+- Participant differences
+- Conversation-related context
+
+### Security Context
+
+Unexpected participants may indicate:
+
+- Conversation manipulation
+- Unauthorized forwarding
+- Thread hijacking
+- Accidental inclusion
+- Legitimate changes to a business conversation
+
+The participant anomaly should therefore be evaluated together with the other detection results.
 
 ---
 
@@ -81,15 +145,30 @@ Observed:           alice@company.com, bob@supplier.com, attacker@example.net
 
 **Purpose:** Evaluate available email authentication results.
 
-**Signals:** The current implementation considers:
+### Current Authentication Signals
+
+The current implementation considers:
 
 - SPF
 - DKIM
 - DMARC
 
-**Detection Logic:** Authentication information available in the analyzed message is evaluated for anomalous or failed authentication results.
+### Detection Logic
 
-**Security Context:** Authentication failures can provide supporting evidence of spoofing or sender identity manipulation. Authentication anomalies should be interpreted alongside other indicators because legitimate mail infrastructure can also produce authentication failures.
+Authentication information available in the analyzed message is evaluated for anomalous or failed authentication results.
+
+The authentication result becomes supporting evidence for the overall analysis rather than functioning as an isolated determination of malicious activity.
+
+### Security Context
+
+Authentication failures can provide evidence associated with:
+
+- Spoofing
+- Sender identity manipulation
+- Unauthorized sending infrastructure
+- Domain authentication problems
+
+> Authentication failure alone does not establish that a message is malicious. Legitimate email infrastructure, forwarding services, configuration changes, and third-party mail systems can also produce authentication anomalies.
 
 ---
 
@@ -97,7 +176,9 @@ Observed:           alice@company.com, bob@supplier.com, attacker@example.net
 
 **Purpose:** Detect changes in infrastructure associated with a known sender.
 
-**Current indicators:**
+### Current Indicators
+
+The current implementation evaluates:
 
 - Previously unseen sending host
 - Previously unseen sending IP address
@@ -107,15 +188,36 @@ Known host:    mail.supplier.com
 Observed host: new-mail.example.net
 ```
 
-**Detection Logic:** Observed infrastructure is compared against the supplied known infrastructure baseline.
+### Detection Logic
 
-**Future enrichment:**
+Observed sender infrastructure is compared against the supplied known infrastructure baseline.
+
+Previously unseen infrastructure can produce a detection indicator.
+
+### Security Context
+
+A change in sender infrastructure can be relevant to impersonation and account-compromise investigations.
+
+However, infrastructure changes can also occur for legitimate reasons, including:
+
+- Mail-provider changes
+- Cloud migration
+- New mail servers
+- Temporary sending services
+- Third-party email platforms
+- Infrastructure maintenance
+
+### Future Enrichment
+
+Future infrastructure enrichment may include:
 
 - ASN
-- Geographic origin
+- Geographic information
 - Reverse DNS
 - Infrastructure reputation
 - Threat-intelligence enrichment
+
+These capabilities are not required for the current deterministic infrastructure detection.
 
 ---
 
@@ -123,7 +225,9 @@ Observed host: new-mail.example.net
 
 **Purpose:** Detect suspicious messages that appear to continue an established business conversation while containing multiple inconsistencies.
 
-**Detection context** — the rule can consider information involving:
+### Detection Context
+
+The rule can consider information involving:
 
 - Sender identity
 - Headers
@@ -132,9 +236,23 @@ Observed host: new-mail.example.net
 - Participants
 - Conversation structure
 
-**Detection Logic:** The rule combines available conversation and sender indicators to identify suspicious continuation of an established conversation.
+### Detection Logic
 
-**Security Context:** Conversation hijacking can be particularly difficult to identify when an attacker attempts to preserve familiar subjects, participants, and communication context.
+BEC-006 combines available conversation and sender indicators to identify suspicious continuation of an established conversation.
+
+The objective is to identify combinations of inconsistencies rather than relying exclusively on a single indicator.
+
+### Security Context
+
+Conversation hijacking can be difficult to identify when an attacker attempts to preserve familiar:
+
+- Subjects
+- Participants
+- Sender identities
+- Communication context
+- Conversation structure
+
+BEC-006 therefore complements the more specialized identity, authentication, infrastructure, behavioral, and content rules.
 
 ---
 
@@ -142,9 +260,23 @@ Observed host: new-mail.example.net
 
 **Purpose:** Detect communication behavior that differs from an established sender or conversation baseline.
 
-**Current implementation:** BEC-007 uses deterministic behavioral analysis based on explicitly supplied behavioral baselines and persisted historical sender observations when available.
+**Severity:** MEDIUM
+**Status:** Operational / Expanding
 
-The current behavioral signals are:
+BEC-007 uses deterministic behavioral analysis based on:
+
+- Explicitly supplied behavioral baselines
+- Persisted historical sender observations
+- Historical recipient relationships
+- Historical communication patterns
+
+The rule does not require machine learning.
+
+Historical observations are retrieved by the application service and passed into the detection engine as structured data. BEC-007 remains independent of direct database access.
+
+### Current Behavioral Signals
+
+The current BEC-007 implementation evaluates behavioral dimensions including:
 
 - Typical sending hour
 - Typical sending day
@@ -155,10 +287,13 @@ The current behavioral signals are:
 - Historical recipient frequency
 - Historical recipient co-occurrence
 - Historical recipient role relationships
+- Historical recipient count
+- Historical recipient recency
+- Historical communication transitions
+- Historical CC usage and recipient count
+- Historical attachment usage
 
-The rule does not require machine learning.
-
-Historical observations are retrieved by the application service and passed into the detection engine as structured data. BEC-007 remains independent of the database.
+These signals are intentionally deterministic and explainable.
 
 ### Email Timestamp
 
@@ -178,9 +313,11 @@ The persisted analysis record stores this value as `email_sent_at`, which is dis
 The optional `typical_hours` baseline defines the hours during which communication is normally expected.
 
 ```text
-Established behavior:   08:00–17:00
-Observed message:       02:47
-Result:
+Established behavior:
+  08:00–17:00
+Observed message:
+  02:47
+Indicator:
 - Message sent outside established communication hours
 ```
 
@@ -210,15 +347,19 @@ The optional `typical_days` baseline uses Python weekday numbering:
 **Example:**
 
 ```text
-Established behavior:   Monday–Friday
-Observed message:       Sunday
-Result:
+Established behavior:
+  Monday–Friday
+Observed message:
+  Sunday
+Indicator:
 - Message sent outside established communication days
 ```
 
 ### Timezone Offset
 
-The optional `typical_timezone_offsets` baseline represents the UTC offsets declared in the email `Date` header. Values are expressed in minutes:
+The optional `typical_timezone_offsets` baseline represents the UTC offsets declared in the email `Date` header.
+
+Values are expressed in minutes.
 
 | Date header offset | Baseline value |
 |---|---|
@@ -234,7 +375,7 @@ Established behavior:
   Timezone offsets: +0100
 Observed message:
   Date header offset: -0500
-Result:
+Indicator:
 - Message sent from an unexpected timezone offset
 ```
 
@@ -244,17 +385,23 @@ Result:
 
 When an analyzed sender has previously persisted email observations with valid historical data, the application service retrieves those observations and supplies them to BEC-007.
 
-A minimum of three qualifying historical observations is required before historical behavioral analysis is established.
+A minimum of three qualifying historical observations is required before the relevant historical behavioral analysis is established.
+
+Historical observations with missing or invalid data for a specific signal are ignored for that signal.
 
 Historical observations can provide evidence for:
 
 - Historical sending-hour range
 - Sending frequency
+- Recipient behavior
 - Recipient frequency
 - Recipient co-occurrence
 - Recipient role relationships
-
-Historical observations with missing or invalid data for a specific signal are ignored for that signal.
+- Recipient count
+- Recipient recency
+- Communication transitions
+- CC behavior
+- Attachment behavior
 
 ### Historical Sending-Hour Range
 
@@ -284,13 +431,15 @@ The historical range is calculated from the minimum and maximum valid observed s
 
 BEC-007 can compare the current sending interval against the sender's historically observed communication cadence.
 
-Historical observations are ordered by their persisted `email_sent_at` timestamps. Valid consecutive observations are used to establish historical sending intervals.
+Historical observations are ordered by their persisted `email_sent_at` timestamps.
+
+Valid consecutive observations are used to establish historical sending intervals.
 
 A minimum of three qualifying historical observations is required before frequency-based behavioral analysis is established.
 
 The current message is compared against the established historical communication cadence using deterministic frequency analysis.
 
-This signal is intended to identify substantial deviations from an established sending cadence.
+The result can preserve structured evidence describing the observed and historical communication frequency.
 
 > Sending frequency is an observed behavioral signal. A change in communication cadence can be legitimate and should be evaluated alongside the other detection evidence.
 
@@ -298,7 +447,9 @@ This signal is intended to identify substantial deviations from an established s
 
 BEC-007 evaluates whether the current message is addressed to recipients that have not previously appeared in the sender's established communication history.
 
-The current recipient set is derived from the message's `To` and `Cc` fields. Historical recipients are recovered from persisted sender analyses using the recipient data stored in each historical analysis result.
+The current recipient set is derived from the message's `To` and `Cc` fields.
+
+Historical recipients are recovered from persisted sender analyses using the recipient data stored in each historical analysis result.
 
 Recipient values are normalized by:
 
@@ -309,13 +460,13 @@ Recipient values are normalized by:
 
 A minimum of three qualifying historical observations is required before recipient history is used as a behavioral baseline.
 
-When a current recipient is absent from the established historical recipient set, BEC-007 records:
+When a current recipient is absent from the established historical recipient set, BEC-007 can record:
 
 ```text
 Message sent to a previously unseen recipient
 ```
 
-The detection result exposes:
+The detection result can expose:
 
 - `historical_recipients`
 - `unusual_recipients`
@@ -328,7 +479,7 @@ BEC-007 can evaluate how frequently individual recipients have historically appe
 
 Recipient frequency represents the proportion of qualifying historical observations in which a recipient appeared.
 
-**For example:**
+**Example:**
 
 ```text
 Historical observations:
@@ -373,7 +524,7 @@ bob@example.com + alice@example.com
 
 A minimum of three qualifying historical observations is required before recipient co-occurrence analysis is established.
 
-**For example:**
+**Example:**
 
 ```text
 Historical communication:
@@ -415,7 +566,7 @@ has not previously appeared together, BEC-007 can record:
 Message contains a historically unusual recipient relationship
 ```
 
-An unseen individual recipient is handled by the recipient behavior signal, while an established recipient appearing in an unusual combination can be identified by co-occurrence analysis.
+An unseen individual recipient is handled by recipient behavior analysis, while an established recipient appearing in an unusual combination can be identified by co-occurrence analysis.
 
 > Recipient co-occurrence is an observed communication-pattern signal. Legitimate business events can create new recipient relationships.
 
@@ -423,45 +574,29 @@ An unseen individual recipient is handled by the recipient behavior signal, whil
 
 BEC-007 evaluates whether established recipient pairs normally occupy the same `To` and `Cc` roles.
 
-Role analysis builds on historical recipient co-occurrence. It is only applied when the recipient pair is already an established relationship.
+Role analysis builds on historical recipient co-occurrence and is only applied when the recipient pair is already an established relationship.
 
-**For example**, historical messages may show:
+**Example:**
 
 ```text
 Historical:
   To: alice@company.com
   Cc: finance@company.com
-```
 
-If the current message contains:
-
-```text
 Current:
   To: finance@company.com
   Cc: alice@company.com
 ```
 
-the same recipients are present and their relationship is known, but their communication roles have changed. BEC-007 can record:
+The same recipients are present and their relationship is known, but their communication roles have changed.
+
+BEC-007 can record:
 
 ```text
 Message contains a historically unusual recipient role relationship
 ```
 
 Multiple recipients are supported in both `To` and `Cc` fields.
-
-**For example:**
-
-```text
-To:
-  alice@company.com
-  bob@company.com
-Cc:
-  finance@company.com
-  legal@company.com
-  manager@company.com
-```
-
-BEC-007 evaluates recipient relationships pairwise while preserving each recipient's current `To` or `Cc` role.
 
 If a recipient appears in both `To` and `Cc`, the `To` role takes precedence so that each recipient has one deterministic role for analysis.
 
@@ -470,6 +605,27 @@ A minimum of three qualifying historical observations is required before recipie
 > An unseen recipient pair is handled by recipient co-occurrence analysis rather than being treated as a recipient role anomaly.
 
 > A change in recipient role is an observed communication-pattern anomaly. Legitimate workflow changes can cause recipients to move between `To` and `Cc`.
+
+### Additional Historical Behavioral Signals
+
+BEC-007 also supports historical analysis of additional communication characteristics, including:
+
+**Recipient Count**
+The number of recipients in the current message can be compared against historically observed recipient counts.
+
+**Recipient Recency**
+Historical recipient relationships can be evaluated in relation to when they were most recently observed.
+
+**Communication Transitions**
+Historical communication sequences can provide evidence of unusual transitions between previously observed communication states.
+
+**CC Usage and Recipient Count**
+Historical Cc behavior and recipient-count patterns can provide additional evidence of changes in established communication structure.
+
+**Attachment Usage**
+Historical attachment behavior can provide additional evidence when the current message's attachment usage differs from established sender behavior.
+
+These signals remain deterministic and baseline-driven.
 
 ### Multiple Behavioral Anomalies
 
@@ -524,12 +680,13 @@ All explicit behavioral baselines are optional.
 - If sufficient historical sender observations are available, the historical sending-hour range is evaluated.
 - If sufficient historical observations contain valid timestamps, historical sending frequency is evaluated.
 - If sufficient historical observations contain usable recipient data, historical recipient behavior is evaluated.
+- Historical signals are evaluated independently according to their own data requirements.
 - An empty explicit behavioral baseline does not independently produce a behavioral detection.
 - Historical analysis is performed only when sufficient valid historical observations are available for the relevant signal.
 
 ### Detection Evidence
 
-The rule exposes structured behavioral details including:
+BEC-007 exposes structured behavioral details that can support investigation, including:
 
 - Observed hour
 - Typical hours
@@ -549,6 +706,11 @@ The rule exposes structured behavioral details including:
 - Historical recipient role frequencies
 - Unusual recipient role pairs
 - Behavioral indicators
+- Historical recipient counts
+- Recipient recency evidence
+- Communication transition evidence
+- CC usage evidence
+- Attachment usage evidence
 
 The persisted analysis record also preserves `email_sent_at`, allowing the original message timestamp to remain available for historical analysis.
 
@@ -581,7 +743,7 @@ This separation keeps the detection rule focused on evaluating evidence while ke
 
 ### Current Behavioral Scope
 
-The currently implemented BEC-007 behavioral signals are:
+The currently implemented BEC-007 behavioral scope includes:
 
 | Signal | Source | Status |
 |---|---|---|
@@ -594,43 +756,51 @@ The currently implemented BEC-007 behavioral signals are:
 | Recipient frequency anomaly | Persisted sender observations | Implemented |
 | Recipient relationship anomaly | Persisted sender observations | Implemented |
 | Recipient role anomaly | Persisted sender observations | Implemented |
-| Recipient group anomaly | Persisted sender observations | Implemented |
-| Recipient recency anomaly | Persisted sender observations | Implemented |
-| Recipient sequence anomaly | Persisted sender observations | Implemented |
+| Recipient count behavior | Persisted sender observations | Implemented |
+| Recipient recency behavior | Persisted sender observations | Implemented |
+| Communication transition behavior | Persisted sender observations | Implemented |
+| CC usage behavior | Persisted sender observations | Implemented |
+| Attachment usage behavior | Persisted sender observations | Implemented |
 
 These signals are intentionally deterministic and explainable.
+
+> BEC-007 remains an expanding behavioral rule because additional historical signals can be introduced as their observation sources, baselines, validation, and evidence models are established.
 
 ### Future Behavioral Indicators
 
 Potential future behavioral enhancements may include:
 
 - Response time
-- Participant count
-- Subject similarity
-- Body similarity
-- Attachment frequency
+- Additional participant-count analysis
 - Infrastructure frequency
-- Domain similarity
+- Domain similarity frequency
 - Reply-To frequency
 - Additional statistically derived behavioral features
 
-> Future behavioral signals should only be introduced when the system has a clearly defined observation source, sufficient data, and a clearly defined baseline or statistical methodology for that signal.
+> Subject similarity and body similarity are implemented separately by BEC-008 and are therefore not part of the BEC-007 content-analysis scope.
+
+Future behavioral signals should only be introduced when the system has a clearly defined observation source, sufficient data, and a clearly defined baseline or statistical methodology.
 
 ---
 
 ## BEC-008 — Message Content Anomaly
 
-**Purpose:** Detect message content that differs substantially from the sender's established historical message patterns.
+**Purpose:** Detect message content and attachment characteristics that differ substantially from the sender's established historical message patterns.
 
 **Severity:** MEDIUM
+**Status:** Operational
 
-BEC-008 uses deterministic historical content analysis. The rule compares the current message against previously observed messages supplied through the detection context.
+BEC-008 provides deterministic historical content analysis.
 
-The current content signals are:
+The rule compares the current message against previously observed messages supplied through the detection context.
+
+The current BEC-008 signals are:
 
 - Subject similarity anomaly
 - Body similarity anomaly
 - Body length anomaly
+- Attachment filename novelty
+- Attachment size anomaly
 
 The rule does not require machine learning or external NLP dependencies.
 
@@ -640,23 +810,47 @@ Historical observations are retrieved by the application service and passed into
 
 BEC-008 itself remains independent of the database.
 
-A minimum of three valid historical observations is required before the relevant content signal is evaluated.
+The general minimum historical observation requirement is:
 
-Historical observations with missing or invalid content for a specific signal are ignored for that signal.
+```text
+MIN_HISTORICAL_OBSERVATIONS = 3
+```
+
+Signals are evaluated independently.
+
+A specific signal only becomes available when sufficient qualifying historical observations exist for that signal.
+
+Historical observations containing missing or invalid data for a specific signal are ignored for that signal.
+
+> This prevents incomplete historical records from being treated as reliable evidence.
 
 ### Subject Similarity
 
 BEC-008 normalizes the current subject and historical subjects before comparison.
 
-Subject normalization includes:
+#### Subject Normalization
+
+Normalization includes:
 
 1. Converting text to lowercase.
-2. Removing repeated `Re`, `Fw`, and `Fwd` prefixes.
+2. Removing repeated `Re:`, `Fw:`, and `Fwd:` prefixes.
 3. Collapsing repeated whitespace.
+4. Removing unnecessary surrounding whitespace.
+
+**Example:**
+
+```text
+Original:
+  Re: Re: Fwd: Quarterly Supplier Review
+Normalized:
+  quarterly supplier review
+```
+
+#### Comparison
 
 The normalized current subject is compared against normalized historical subjects using deterministic sequence similarity based on Python's standard-library `difflib.SequenceMatcher`.
 
-The strongest similarity result across the qualifying historical subjects is used for the signal.
+The strongest similarity result across the qualifying historical subjects is used as the comparison evidence.
 
 The current threshold is:
 
@@ -664,27 +858,30 @@ The current threshold is:
 SUBJECT_SIMILARITY_THRESHOLD = 0.50
 ```
 
-A sufficiently low similarity can produce:
+A strongest historical similarity below 0.50 can produce:
 
 ```text
 Indicator:
-- Subject differs substantially from historical message subjects
+- Message subject differs substantially from historical message patterns
 ```
 
-> This signal is intended to identify unusual changes in established subject patterns. It does not determine whether the new subject is malicious.
+> This signal identifies unusual changes in established subject patterns. It does not determine whether the new subject is malicious.
 
 ### Body Similarity
 
 BEC-008 normalizes message body content before comparison.
 
-Body normalization includes:
+#### Body Normalization
+
+Normalization includes:
 
 1. Converting text to lowercase.
 2. Collapsing repeated whitespace.
+3. Removing unnecessary surrounding whitespace.
 
 The normalized current body is compared against normalized historical bodies using deterministic sequence similarity based on Python's standard-library `difflib.SequenceMatcher`.
 
-The strongest similarity result across the qualifying historical bodies is used for the signal.
+The strongest similarity result across qualifying historical bodies is used for the signal.
 
 The current threshold is:
 
@@ -692,20 +889,22 @@ The current threshold is:
 BODY_SIMILARITY_THRESHOLD = 0.50
 ```
 
-A sufficiently low similarity can produce:
+A strongest historical similarity below 0.50 can produce:
 
 ```text
 Indicator:
-- Message body differs substantially from historical message bodies
+- Message body differs substantially from historical message patterns
 ```
 
-> Body similarity is an observed content-pattern signal and should be interpreted alongside other detection evidence.
+> Body similarity is an observed content-pattern signal and should be interpreted alongside the other detection evidence.
 
 ### Body Length Anomaly
 
-BEC-008 also compares the current body length against the historical body-length baseline.
+BEC-008 compares the current body length against the historical body-length baseline.
 
-The historical baseline uses the median length of qualifying historical message bodies.
+Historical body lengths are calculated from normalized body content.
+
+The historical baseline uses the median body length.
 
 The current threshold is:
 
@@ -713,96 +912,580 @@ The current threshold is:
 BODY_LENGTH_RATIO_THRESHOLD = 2.0
 ```
 
-A body can be considered anomalous when its length is:
+The current body can be considered anomalous when its length is:
 
-- More than two times the historical median, or
-- Less than half the historical median.
+- Greater than two times the historical median, or
+- Less than one-half of the historical median.
+
+**Example:**
+
+```text
+Historical body lengths:
+  420
+  450
+  500
+Historical median:
+  450
+Upper threshold:
+  900
+Lower threshold:
+  225
+```
+
+A current body length of 1200 is anomalous because it exceeds twice the historical median.
+
+A current body length of 150 is anomalous because it is less than half the historical median.
+
+Exact boundary values are treated as normal:
+
+```text
+2.0 × median
+0.5 × median
+```
+
+are not themselves outside the configured range.
+
+### Zero-Length Historical Bodies
+
+BEC-008 handles a zero historical median explicitly.
+
+When:
+
+```text
+Historical median:
+  0
+```
+
+a current body containing content can be considered anomalous.
+
+This prevents the ratio comparison from attempting to divide by zero.
+
+A current empty body remains consistent with a zero-length historical baseline.
+
+### Attachment Analysis
+
+BEC-008 now includes deterministic attachment analysis.
+
+The current attachment signals are:
+
+1. Attachment filename novelty
+2. Attachment size anomaly
+
+Attachment analysis remains historical and baseline-aware.
+
+> It does not perform malware analysis or inspect attachment contents.
+
+### Attachment Filename Novelty
+
+**Purpose:** Detect attachment filenames that have not previously appeared in the sender's qualifying historical attachment baseline.
+
+#### Current Attachment Normalization
+
+Attachment filenames are normalized before comparison.
+
+The normalization is used to provide deterministic comparisons between current and historical filenames.
+
+Invalid attachment entries and invalid or empty filenames are ignored.
+
+#### Historical Requirement
+
+Attachment filename novelty requires at least:
+
+```text
+3 historical observations containing attachment metadata
+```
+
+Historical observations without a usable attachment list do not count toward this requirement.
+
+Within qualifying attachment metadata:
+
+- Non-dictionary attachment entries are ignored.
+- Invalid attachment filenames are ignored.
+- Empty normalized filenames are ignored.
+
+#### Detection Logic
+
+The current normalized attachment filenames are compared against the normalized filenames observed in the qualifying historical attachment observations.
+
+A filename that is absent from the historical filename baseline can be considered novel.
+
+**Example:**
+
+```text
+Historical attachment filenames:
+  invoice.pdf
+  invoice.pdf
+  invoice.pdf
+Current attachment:
+  payment-instructions.pdf
+Result:
+- Attachment filename is historically novel
+```
+
+The detection evidence can preserve:
+
+- Current attachment filenames
+- Historical attachment filenames
+- Novel attachment filenames
+- Historical observation count
+- Whether a sufficient attachment baseline was available
+
+> A novel attachment filename is not proof of malicious activity. Legitimate new invoices, reports, contracts, documents, and business processes can introduce previously unseen filenames.
+
+### Invalid Attachment Metadata
+
+BEC-008 intentionally ignores invalid attachment metadata when evaluating filename novelty.
 
 **For example:**
 
 ```text
-Historical median body length:
-  500 characters
-Current body:
-  1,200 characters
-Result:
-- Message body length differs substantially from historical behavior
+Current attachments:
+  {}
+  {"filename": ""}
+  {"filename": "invoice.pdf"}
+  "invalid"
 ```
 
-> A zero historical median is handled separately. If the historical median body length is zero and the current body contains content, the body-length signal can be considered anomalous.
+Only the valid attachment filename is considered.
+
+Similarly, historical observations containing malformed attachment entries do not create artificial historical evidence.
+
+This prevents malformed or incomplete attachment metadata from incorrectly influencing the historical baseline.
+
+### Attachment Size Anomaly
+
+**Purpose:** Detect an attachment whose size differs substantially from the historical size baseline for the same normalized filename.
+
+Attachment size analysis is performed independently for each normalized attachment filename.
+
+#### Historical Requirement
+
+Attachment size analysis requires at least:
+
+```text
+3 valid historical size observations
+```
+
+for the same normalized attachment filename.
+
+Historical attachment sizes are grouped by normalized filename.
+
+Invalid historical attachment entries are ignored when:
+
+- The attachment is not a dictionary.
+- The filename is invalid or empty.
+- The size is boolean.
+- The size is non-numeric.
+
+This prevents invalid values from becoming part of the historical size baseline.
+
+### Historical Attachment Size Baseline
+
+The historical attachment size baseline uses the median size for the same normalized filename.
+
+**Example:**
+
+```text
+Historical:
+invoice.pdf
+  100 KB
+  100 KB
+  100 KB
+Historical median:
+  100 KB
+```
+
+The current attachment size is then compared against that baseline.
+
+### Attachment Size Threshold
+
+The current attachment size comparison uses a two-times / half-times threshold.
+
+A current attachment size can be considered anomalous when it is:
+
+- Greater than two times the historical median, or
+- Less than one-half of the historical median.
+
+**Example:**
+
+```text
+Historical median:
+  100 KB
+Upper threshold:
+  200 KB
+Lower threshold:
+  50 KB
+```
+
+Therefore:
+
+```text
+Current:
+  201 KB
+Result:
+- Attachment size anomaly
+```
+
+And:
+
+```text
+Current:
+  49 KB
+Result:
+- Attachment size anomaly
+```
+
+Exact boundaries are normal:
+
+```text
+200 KB
+50 KB
+```
+
+do not exceed the configured anomaly range.
+
+### Zero Historical Attachment Size
+
+BEC-008 handles a zero historical median explicitly.
+
+When:
+
+```text
+Historical median:
+  0
+```
+
+a current attachment with a size greater than zero can be considered anomalous.
+
+This prevents the size-ratio comparison from attempting to divide by zero.
+
+A current attachment size of zero remains consistent with a zero historical median.
+
+### Per-Filename Attachment Baselines
+
+Attachment size analysis is performed against the historical baseline for the same normalized filename.
+
+**For example:**
+
+```text
+Historical:
+invoice.pdf:
+  100 KB
+  100 KB
+  100 KB
+report.pdf:
+  1 MB
+  1 MB
+  1 MB
+```
+
+The current:
+
+```text
+invoice.pdf:
+  210 KB
+```
+
+is evaluated against the `invoice.pdf` baseline rather than the `report.pdf` baseline.
+
+This prevents unrelated attachment types from influencing one another's size baseline.
+
+### Invalid Current Attachment Metadata
+
+Invalid current attachment metadata is ignored for attachment size analysis.
+
+**For example:**
+
+```text
+Current attachments:
+  {}
+  {"filename": ""}
+  {"filename": "invoice.pdf", "size": true}
+  {"filename": "invoice.pdf", "size": "invalid"}
+  {"filename": "invoice.pdf", "size": 201000}
+```
+
+Only the valid numeric attachment size is eligible for analysis.
+
+Boolean values are not treated as numeric attachment sizes.
+
+This keeps malformed metadata from generating misleading attachment-size detections.
+
+### Multiple Attachment Anomalies
+
+BEC-008 can evaluate multiple attachment-related anomalies within the same message.
+
+**For example:**
+
+```text
+Historical:
+  invoice.pdf
+  invoice.pdf
+  invoice.pdf
+Current:
+  payment-instructions.pdf
+```
+
+can produce:
+
+```text
+Indicator:
+- Attachment filename is historically novel
+```
+
+Similarly:
+
+```text
+Historical invoice.pdf sizes:
+  100 KB
+  100 KB
+  100 KB
+Current invoice.pdf:
+  250 KB
+```
+
+can produce:
+
+```text
+Indicator:
+- Attachment size differs substantially from historical behavior
+```
+
+These signals are evaluated independently.
 
 ### Multiple Content Anomalies
 
-BEC-008 evaluates the content signals independently.
+BEC-008 evaluates subject, body, body length, attachment filename, and attachment size independently.
 
-A single message can therefore produce multiple structured indicators:
+A single message can therefore produce multiple content-related indicators.
+
+**Example:**
 
 ```text
 Indicators:
-- Subject differs substantially from historical message subjects
-- Message body differs substantially from historical message bodies
-- Message body length differs substantially from historical behavior
+- Message subject differs substantially from historical message patterns
+- Message body differs substantially from historical message patterns
+- Message body length differs substantially from historical message patterns
+- Attachment filename is historically novel
+- Attachment size differs substantially from historical behavior
 ```
 
-The detection remains explainable because each indicator corresponds to a specific deterministic comparison.
+Each indicator corresponds to a specific deterministic comparison.
 
-### Structured Evidence
+This preserves the evidence-first design of the rule.
 
-BEC-008 exposes structured evidence for each detected content anomaly.
+### Structured Content Evidence
 
-The detection result can preserve information including:
+BEC-008 exposes structured evidence for detected content anomalies.
 
+**Evidence can include information such as:**
+
+**Subject**
 - Signal type
-- Historical comparison values
-- Similarity evidence
-- Historical body lengths
+- Current normalized subject
+- Historical subject comparison
+- Similarity value
+- Similarity threshold
+
+**Body**
+- Signal type
+- Current normalized body
+- Historical body comparison
+- Similarity value
+- Similarity threshold
+
+**Body Length**
+- Signal type
 - Current body length
+- Historical body lengths
 - Historical median body length
-- Threshold information
+- Body-length threshold
+- Historical observation count
 
-The structured evidence allows API consumers, persistence, and SIEM integrations to preserve the reasoning behind the detection.
+**Attachment Filename**
+- Signal type
+- Current attachment filenames
+- Historical attachment filenames
+- Novel attachment filenames
+- Historical observation count
+- Baseline availability
 
-### Content Baseline Limitations
+**Attachment Size**
+- Signal type
+- Attachment filename
+- Current attachment size
+- Historical attachment sizes
+- Historical median size
+- Size threshold
+- Historical observation count
 
-Message content can legitimately change because of:
+This structured evidence allows API consumers, persistence, and SIEM integrations to preserve the reasoning behind the detection.
 
-- New business activities
-- New projects
-- Changes in communication style
-- Different recipients
-- New workflows
-- One-time business events
+### Content Baseline Requirements
 
-> Therefore, a content anomaly is not proof of malicious activity.
+BEC-008 uses a minimum of three qualifying observations for historical analysis.
 
-The quality and representativeness of the historical message baseline directly affect detection accuracy.
+```text
+MIN_HISTORICAL_OBSERVATIONS = 3
+```
 
-### Attachments
+However, qualification is signal-specific.
 
-Attachment analysis is currently outside the scope of BEC-008.
+**For example:**
 
-**Future attachment-focused detection may consider:**
+```text
+Subject:
+  Requires at least 3 valid historical subjects.
+Body similarity:
+  Requires at least 3 valid historical bodies.
+Body length:
+  Requires at least 3 valid historical body lengths.
+Attachment filename novelty:
+  Requires at least 3 historical observations containing attachment metadata.
+Attachment size:
+  Requires at least 3 valid historical size observations for the same normalized filename.
+```
 
-- Attachment frequency
-- Attachment type changes
-- Filename patterns
-- Unusual attachment sizes
-- Historical attachment behavior
-- Malicious attachment indicators
+This means one message can have sufficient historical evidence for one signal while another signal remains unavailable.
 
-> These capabilities should be introduced as separate, clearly defined detection signals or rules rather than assumed to be part of the current BEC-008 implementation.
+The rule does not infer an anomaly merely because insufficient historical data exists.
+
+### Historical Content Observation Source
+
+Historical content observations are supplied by the application layer.
+
+The detection rule does not query PostgreSQL directly.
+
+The architecture is:
+
+```text
+Database
+   │
+   ▼
+Repository
+   │
+   ▼
+Analysis Service
+   │
+   ▼
+Historical Observations
+   │
+   ▼
+Detection Context
+   │
+   ▼
+BEC-008
+```
+
+This keeps BEC-008 deterministic, testable, and independent of persistence implementation details.
 
 ### Current Content Scope
 
-The currently implemented BEC-008 signals are:
+The currently implemented BEC-008 content signals are:
 
-| Signal | Source | Status |
-|---|---|---|
-| Subject similarity anomaly | Historical message subjects | Implemented |
-| Body similarity anomaly | Historical message bodies | Implemented |
-| Body length anomaly | Historical message body lengths | Implemented |
+| Signal | Historical Source | Minimum Evidence | Status |
+|---|---|---|---|
+| Subject similarity anomaly | Historical message subjects | 3 valid subjects | Implemented |
+| Body similarity anomaly | Historical message bodies | 3 valid bodies | Implemented |
+| Body length anomaly | Historical body lengths | 3 valid lengths | Implemented |
+| Attachment filename novelty | Historical attachment metadata | 3 qualifying observations | Implemented |
+| Attachment size anomaly | Same filename historical sizes | 3 valid sizes | Implemented |
 
-All three signals are deterministic and explainable.
+All five signals are deterministic and explainable.
+
+### BEC-008 Limitations
+
+BEC-008 is a content-pattern and attachment-metadata anomaly detector.
+
+**It does not currently perform:**
+
+- Semantic NLP
+- Embedding-based similarity
+- External AI classification
+- Malware analysis
+- Attachment content inspection
+- Archive extraction
+- File hashing for malware detection
+- Threat-intelligence lookup
+- Behavioral intent classification
+
+Attachment filename and size anomalies are metadata-based indicators only.
+
+> A content or attachment anomaly does not establish malicious intent by itself.
+
+---
+
+## Conversation Hijacking Analysis
+
+Conversation hijacking detection combines multiple sources of evidence.
+
+Potential indicators include:
+
+- Unexpected sender identity
+- Unexpected participant
+- Header inconsistencies
+- Infrastructure changes
+- Authentication anomalies
+- Conversation structure inconsistencies
+- Behavioral anomalies
+- Message content anomalies
+- Attachment anomalies
+
+The objective is not to rely on one indicator but to identify combinations of inconsistencies that may indicate that an established conversation has been manipulated.
+
+---
+
+## Detection Results
+
+Each detection result contains structured information.
+
+A typical detection includes:
+
+```text
+Rule ID
+Rule Name
+Severity
+Matched
+Risk Score
+Indicators
+Details
+```
+
+For BEC-007 and BEC-008, indicators may contain both human-readable strings and structured evidence objects.
+
+**Example:**
+
+```text
+Rule:
+  BEC-008 — Message Content Anomaly
+Indicators:
+  - Message subject differs substantially from historical message patterns
+Structured evidence:
+  - Signal type
+  - Similarity value
+  - Threshold
+  - Historical comparison data
+```
+
+An attachment-related detection can preserve evidence such as:
+
+```text
+Rule:
+  BEC-008 — Message Content Anomaly
+Signal:
+  attachment_size
+Evidence:
+  Filename:
+    invoice.pdf
+  Current size:
+    250000
+  Historical median:
+    100000
+  Threshold:
+    2.0x
+```
+
+This allows downstream systems to preserve not only the fact that a rule matched, but also the evidence that caused the match.
 
 ---
 
@@ -810,11 +1493,15 @@ All three signals are deterministic and explainable.
 
 Each detection returns a severity value and risk contribution.
 
-The risk score is generated from observable indicators associated with the rule. Individual detection scores are capped at 100.
+The risk score is generated from observable indicators associated with the rule.
+
+Individual detection scores are capped at 100.
 
 The overall analysis can combine risk contributions from matched detections.
 
-> The score is intended to support analyst investigation and should not be treated as proof of malicious activity.
+BEC-007 and BEC-008 contribute to the analysis when their respective behavioral or content conditions are satisfied.
+
+> Risk scores are intended to support analyst investigation and should not be treated as proof of malicious activity.
 
 ---
 
@@ -822,31 +1509,149 @@ The overall analysis can combine risk contributions from matched detections.
 
 Each matched rule should provide evidence through its structured result.
 
+**Example:**
+
 ```text
-Rule ID:    BEC-001
-Rule Name:  Lookalike Domain
-Matched:    true
+Rule ID:
+  BEC-001
+Rule Name:
+  Lookalike Domain
+Matched:
+  true
 Indicators:
-- Domain mismatch
-- Domain similarity
+  - Domain mismatch
+  - Domain similarity
 Details:
-Known domain = supplier.com
-Observed domain = supp1ier.com
+  Known domain = supplier.com
+  Observed domain = supp1ier.com
 ```
 
-This structure allows downstream API consumers and SIEM integrations to preserve the reasoning behind the detection.
+A behavioral detection can expose:
+
+```text
+Rule:
+  BEC-007 — Behavioral Communication Anomaly
+Historical hours:
+  09:00, 10:00, 14:00
+Historical range:
+  09:00–14:00
+Observed hour:
+  03:00
+Indicator:
+- Message sent outside historically observed communication hours
+```
+
+A content detection can expose:
+
+```text
+Rule:
+  BEC-008 — Message Content Anomaly
+Signal:
+  Subject similarity
+Current subject:
+  urgent payment instruction
+Best historical match:
+  quarterly supplier review
+Similarity:
+  0.31
+Threshold:
+  0.50
+Indicator:
+- Message subject differs substantially from historical message patterns
+```
+
+An attachment detection can expose:
+
+```text
+Rule:
+  BEC-008 — Message Content Anomaly
+Signal:
+  Attachment size
+Filename:
+  invoice.pdf
+Current size:
+  201 KB
+Historical median:
+  100 KB
+Threshold:
+  2.0x
+Indicator:
+- Attachment size differs substantially from historical behavior
+```
+
+This structure allows a SOC analyst to investigate the underlying evidence rather than relying only on a risk score.
 
 ---
 
 ## Rule Independence
 
-Detection rules are designed to operate independently. This provides several advantages:
+Detection rules are designed to operate independently.
+
+**This provides several advantages:**
 
 - Individual rules can be tested independently.
 - New rules can be added without redesigning existing rules.
 - Analysts can identify exactly which indicators triggered.
 - Risk contributions can remain explainable.
 - Detection results can be normalized for SIEM platforms.
+- Historical behavioral and content analysis can evolve without coupling rules to database implementation details.
+
+The application layer is responsible for retrieving historical observations and supplying them to the detection context.
+
+---
+
+## False Positives
+
+Individual detection indicators can be triggered by legitimate activity.
+
+Examples include:
+
+- Legitimate changes to mail infrastructure
+- Temporary sending services
+- Forwarding systems
+- Third-party mail providers
+- Legitimate Reply-To addresses
+- New employees joining a conversation
+- Changes to normal communication schedules
+- Legitimate communication outside historical sending hours
+- Legitimate changes in sender timezone or working schedule
+- Legitimate changes in recipient relationships
+- Legitimate changes between `To` and `Cc` roles
+- One-off recipients
+- Low-frequency recipients
+- Legitimate changes to message subjects
+- Legitimate changes to message body content
+- Short or unusually detailed messages
+- New business processes producing different message templates
+- New or previously unseen attachment filenames
+- Legitimate changes in attachment sizes
+- New document types or business processes
+
+For this reason, detections should be interpreted using the complete analysis context.
+
+> Historical behavioral and content anomalies should be treated as investigation indicators rather than proof of compromise.
+
+---
+
+## False Negatives
+
+The system may fail to identify attacks when:
+
+- The attacker uses the legitimate mailbox
+- Baseline information is incomplete
+- Historical observations are insufficient
+- Relevant headers are unavailable
+- Authentication information is missing
+- Infrastructure information cannot be established
+- Communication behavior closely resembles normal behavior
+- Malicious content closely resembles legitimate historical content
+- Historical message content is too limited to establish a reliable baseline
+- Attachment metadata is unavailable or incomplete
+- The attacker deliberately reproduces the sender's established communication patterns
+- The attacker uses previously observed attachment names and sizes
+- The attacker keeps recipient relationships consistent with historical behavior
+
+The system therefore treats detection as an investigation aid rather than a guarantee of malicious activity.
 
 ---
 
@@ -858,9 +1663,83 @@ Potential future detection rules may include:
 - Domain age anomaly
 - Geographic sender anomaly
 - ASN anomaly
-- Attachment behavior anomaly
+- Additional attachment behavior analysis
 - Mailbox forwarding-rule indicators
 - Threat-intelligence correlation
-- Additional conversation and behavioral correlation rules
+- Additional conversation correlation
+- Additional behavioral correlation
+- Advanced content analysis
 
 Future rules should maintain the same explainable structure used by the existing detection engine.
+
+---
+
+## Detection Philosophy
+
+The detection engine follows several core principles:
+
+**Evidence First**
+Every detection should be supported by observable evidence.
+
+**Baseline Aware**
+Historical anomalies are meaningful only when the historical baseline is sufficiently established and representative.
+
+**Deterministic First**
+The current detection foundation uses deterministic rules before introducing statistical or machine-learning-based analysis.
+
+**Independent Signals**
+Individual signals are evaluated independently so that multiple inconsistencies can be preserved rather than collapsed into a single opaque decision.
+
+**Explainable Results**
+Detection results should communicate not only that an anomaly occurred, but also the evidence and thresholds that caused the detection.
+
+**Database Independence**
+Detection rules do not directly query the persistence layer. Historical observations are retrieved by the application layer and passed into the detection context.
+
+**Investigation Support**
+The engine is designed to assist SOC analysts and investigators rather than replace human judgment.
+
+---
+
+## Current Detection Rule Summary
+
+| Rule | Detection Area | Historical Baseline | Status |
+|---|---|---|---|
+| BEC-001 | Lookalike domain | Supplied trusted domain | Implemented |
+| BEC-002 | Reply-To mismatch | Sender identity | Implemented |
+| BEC-003 | Thread participants | Supplied participant baseline | Implemented |
+| BEC-004 | Authentication | SPF/DKIM/DMARC | Implemented |
+| BEC-005 | Sender infrastructure | Known hosts/IPs | Implemented |
+| BEC-006 | Conversation hijacking | Conversation context | Implemented |
+| BEC-007 | Behavioral communication | Explicit + historical behavior | Operational / Expanding |
+| BEC-008 | Message content + attachment metadata | Historical message observations | Operational |
+
+BEC-008 currently provides deterministic coverage across:
+
+```text
+Subject Similarity
+       │
+       ├── Historical subjects
+       │
+       ▼
+Body Similarity
+       │
+       ├── Historical bodies
+       │
+       ▼
+Body Length
+       │
+       ├── Historical median
+       │
+       ▼
+Attachment Filename Novelty
+       │
+       ├── Historical attachment metadata
+       │
+       ▼
+Attachment Size Anomaly
+       │
+       └── Same-filename historical size baseline
+```
+
+The current rule set is intentionally designed to remain explainable, testable, and extensible as additional detection capabilities are introduced.
