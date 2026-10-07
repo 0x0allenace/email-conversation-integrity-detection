@@ -1199,6 +1199,33 @@ def test_calculate_attachment_novelty_ignores_invalid_current_attachments():
     assert result["novel_filenames"] == ["bank-details.pdf"]
 
 
+def test_calculate_attachment_novelty_ignores_invalid_historical_attachments():
+    rule = MessageContentAnomalyRule()
+
+    result = rule._calculate_attachment_novelty(
+        [
+            {"filename": "bank-details.pdf"},
+        ],
+        [
+            {
+                "attachments": [
+                    None,
+                    {},
+                    {"filename": None},
+                    {"filename": "   "},
+                    {"filename": "invoice.pdf"},
+                ]
+            },
+            {"attachments": [{"filename": "invoice.pdf"}]},
+            {"attachments": [{"filename": "invoice.pdf"}]},
+        ],
+    )
+
+    assert result["available"] is True
+    assert result["historical_filenames"] == ["invoice.pdf"]
+    assert result["novel_filenames"] == ["bank-details.pdf"]
+
+
 def test_attachment_novelty_anomaly_requires_available_analysis():
     assert (
         MessageContentAnomalyRule._is_attachment_novelty_anomaly(
