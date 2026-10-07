@@ -994,6 +994,74 @@ def test_evaluate_detects_attachment_size_anomaly():
         for indicator in result["indicators"]
     )
 
+def test_evaluate_does_not_flag_normal_attachment_size_as_anomaly():
+    rule = MessageContentAnomalyRule()
+
+    context = DetectionContext(
+        email_data={
+            "subject": "Invoice Update",
+            "body": "Please review the updated invoice.",
+        },
+        identity={},
+        participants=[],
+        authentication={},
+        infrastructure={},
+        known_domain="supplier.com",
+        known_display_name="Bob Supplier",
+        known_participants=[],
+        known_hosts=[],
+        known_ip_addresses=[],
+        attachments=[
+            {
+                "filename": "invoice.pdf",
+                "content_type": "application/pdf",
+                "size_bytes": 150,
+            }
+        ],
+        historical_observations=[
+            {
+                "subject": "Invoice Update",
+                "body": "Please review the updated invoice.",
+                "attachments": [
+                    {
+                        "filename": "invoice.pdf",
+                        "size_bytes": 100,
+                    }
+                ],
+            },
+            {
+                "subject": "Invoice Update",
+                "body": "Please review the updated invoice.",
+                "attachments": [
+                    {
+                        "filename": "invoice.pdf",
+                        "size_bytes": 100,
+                    }
+                ],
+            },
+            {
+                "subject": "Invoice Update",
+                "body": "Please review the updated invoice.",
+                "attachments": [
+                    {
+                        "filename": "invoice.pdf",
+                        "size_bytes": 100,
+                    }
+                ],
+            },
+        ],
+    )
+
+    result = rule.evaluate(context)
+
+    indicator_types = {
+        indicator["type"]
+        for indicator in result["indicators"]
+    }
+
+    assert "attachment_size_anomaly" not in indicator_types
+
+
 def test_normalize_attachment_filename():
     rule = MessageContentAnomalyRule()
 
