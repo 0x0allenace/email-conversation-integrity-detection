@@ -89,3 +89,22 @@ def test_lookalike_domain_triggers_bec_001():
     )
 
     assert risk_score == 100
+
+
+def test_matching_display_name_with_unrelated_domain_does_not_trigger_bec_001():
+    """A matching display name alone should not trigger BEC-001."""
+
+    context = build_context(LEGITIMATE_EMAIL)
+
+    context.identity["domain"] = "unrelated-example.net"
+    context.identity["display_name"] = "Bob Supplier"
+
+    rule = LookalikeDomainRule()
+
+    result = rule.evaluate(
+        context=context,
+    )
+
+    assert result["matched"] is False
+    assert result["observed_domain"] == "unrelated-example.net"
+    assert result["known_domain"] == "supplier.com"
