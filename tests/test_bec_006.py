@@ -88,3 +88,39 @@ def test_thread_hijacking_triggers_bec_006():
         "Sender is not a known participant in the conversation"
         in result["indicators"]
     )
+
+
+def test_references_only_with_unknown_sender_triggers_bec_006():
+    """An unknown sender with only References should trigger."""
+
+    email_data = {
+        "from": "attacker@external-mail.com",
+        "in_reply_to": "",
+        "references": "<original-message-id@example.com>",
+    }
+
+    context = build_context(
+        email_data=email_data,
+        known_participants=[
+            "alice@company.com",
+            "bob@supplier.com",
+        ],
+    )
+
+    rule = ConversationHijackingRule()
+
+    result = rule.evaluate(
+        context=context,
+    )
+
+    assert result["matched"] is True
+    assert result["sender_address"] == "attacker@external-mail.com"
+    assert result["sender_is_known"] is False
+    assert (
+        "Message contains existing conversation thread headers"
+        in result["indicators"]
+    )
+    assert (
+        "Sender is not a known participant in the conversation"
+        in result["indicators"]
+    )
