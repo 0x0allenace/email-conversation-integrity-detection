@@ -93,3 +93,23 @@ def test_thread_hijacking_detects_new_participant():
         "Unexpected participant detected in conversation"
         in result["indicators"]
     )
+
+
+def test_participant_matching_is_case_insensitive():
+    """Participant comparison should ignore email address casing."""
+
+    context = build_context(LEGITIMATE_EMAIL)
+
+    context.participants = [
+        "Alice@Company.com",
+        "Bob@Supplier.com",
+    ]
+
+    rule = ThreadParticipantAnomalyRule()
+
+    result = rule.evaluate(
+        context=context,
+    )
+
+    assert result["matched"] is False
+    assert result["new_participants"] == []
