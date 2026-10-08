@@ -2010,6 +2010,20 @@ def test_evaluate_detects_attachment_novelty_anomaly():
 
     assert "attachment_novelty_anomaly" in indicator_types
 
+    indicator = next(
+        indicator
+        for indicator in result["indicators"]
+        if indicator["type"] == "attachment_novelty_anomaly"
+    )
+
+    evidence = indicator["evidence"]
+
+    assert evidence["available"] is True
+    assert evidence["current_filenames"] == ["bank-details.pdf"]
+    assert evidence["historical_observation_count"] == 3
+    assert evidence["historical_filenames"] == ["invoice.pdf"]
+    assert evidence["novel_filenames"] == ["bank-details.pdf"]
+
 
 def test_evaluate_does_not_flag_historical_attachment_as_novel():
     rule = MessageContentAnomalyRule()
