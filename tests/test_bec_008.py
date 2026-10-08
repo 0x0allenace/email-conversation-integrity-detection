@@ -1013,11 +1013,30 @@ def test_evaluate_detects_attachment_size_anomaly():
     }
 
     assert "attachment_size_anomaly" in indicator_types
-    assert any(
-        indicator["type"] == "attachment_size_anomaly"
-        and "evidence" in indicator
+
+    indicator = next(
+        indicator
         for indicator in result["indicators"]
+        if indicator["type"] == "attachment_size_anomaly"
     )
+
+    evidence = indicator["evidence"]
+
+    assert evidence["available"] is True
+    assert evidence["current_attachments"] == [
+        {
+            "filename": "invoice.pdf",
+            "size_bytes": 201,
+        }
+    ]
+    assert evidence["anomalies"] == [
+        {
+            "filename": "invoice.pdf",
+            "current_size_bytes": 201,
+            "historical_observation_count": 3,
+            "historical_median_size_bytes": 100.0,
+        }
+    ]
 
 def test_evaluate_does_not_flag_normal_attachment_size_as_anomaly():
     rule = MessageContentAnomalyRule()
