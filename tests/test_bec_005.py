@@ -163,3 +163,30 @@ def test_unexpected_host_and_ip_are_both_reported():
         "Unexpected sending IP address detected"
         in result["indicators"]
     )
+
+
+def test_known_host_matching_is_case_insensitive():
+    """Known host comparison should ignore hostname casing."""
+
+    context = build_context(
+        {
+            "hosts": [
+                "MAIL.SUPPLIER.COM",
+                "RELAY.SUPPLIER.COM",
+            ],
+            "ip_addresses": [
+                "192.0.2.10",
+                "192.0.2.20",
+            ],
+        }
+    )
+
+    rule = SenderInfrastructureAnomalyRule()
+
+    result = rule.evaluate(
+        context=context,
+    )
+
+    assert result["matched"] is False
+    assert result["new_hosts"] == []
+    assert result["new_ip_addresses"] == []
