@@ -787,7 +787,13 @@ def test_evaluate_detects_body_similarity_anomaly():
     assert result["matched"] is True
     assert len(result["indicators"]) == 1
     assert result["indicators"][0]["type"] == "body_similarity_anomaly"
-    assert "evidence" in result["indicators"][0]
+
+    evidence = result["indicators"][0]["evidence"]
+
+    assert evidence["available"] is True
+    assert evidence["current_body"] == "quarterly access review completed."
+    assert evidence["historical_count"] == 3
+    assert evidence["max_similarity"] < 0.50
 
 
 def test_evaluate_detects_body_length_anomaly():
