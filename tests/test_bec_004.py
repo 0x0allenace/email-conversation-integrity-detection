@@ -129,3 +129,33 @@ def test_unknown_authentication_results_are_reported():
         "spf",
         "dmarc",
     ]
+
+
+def test_all_supported_authentication_failure_states_trigger_bec_004():
+    """All supported authentication failure states should trigger BEC-004."""
+
+    for failure_state in (
+        "softfail",
+        "permerror",
+        "temperror",
+    ):
+        context = build_context(
+            {
+                "spf": failure_state,
+                "dkim": "pass",
+                "dmarc": "pass",
+            }
+        )
+
+        rule = AuthenticationAnomalyRule()
+
+        result = rule.evaluate(
+            context=context,
+        )
+
+        assert result["matched"] is True
+        assert result["failed_methods"] == ["spf"]
+        assert (
+            "Email authentication failure detected"
+            in result["indicators"]
+        )
