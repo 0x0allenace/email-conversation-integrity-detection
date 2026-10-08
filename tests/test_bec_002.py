@@ -85,3 +85,31 @@ def test_reply_to_mismatch_triggers_bec_002():
         "Reply-To domain differs from From domain"
         in result["indicators"]
     )
+
+
+def test_reply_to_local_part_mismatch_with_same_domain_triggers_bec_002():
+    """A different Reply-To address on the same domain should trigger BEC-002."""
+
+    context = build_context(LEGITIMATE_EMAIL)
+
+    context.email_data["reply_to"] = "alice@supplier.com"
+
+    rule = ReplyToMismatchRule()
+
+    result = rule.evaluate(
+        context=context,
+    )
+
+    assert result["matched"] is True
+    assert result["from_address"] == "bob@supplier.com"
+    assert result["reply_to_address"] == "alice@supplier.com"
+
+    assert (
+        "Reply-To address differs from From address"
+        in result["indicators"]
+    )
+
+    assert (
+        "Reply-To domain differs from From domain"
+        not in result["indicators"]
+    )
