@@ -841,6 +841,19 @@ def test_evaluate_detects_body_length_anomaly():
 
     assert "body_length_anomaly" in indicator_types
 
+    indicator = next(
+        indicator
+        for indicator in result["indicators"]
+        if indicator["type"] == "body_length_anomaly"
+    )
+
+    evidence = indicator["evidence"]
+
+    assert evidence["available"] is True
+    assert evidence["current_length"] == 101
+    assert evidence["historical_median_length"] == 50
+    assert evidence["historical_count"] == 3
+
 
 def test_evaluate_returns_multiple_content_anomalies():
     rule = MessageContentAnomalyRule()
