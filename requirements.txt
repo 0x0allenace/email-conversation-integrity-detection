@@ -12,3 +12,6 @@ python-multipart>=0.0.20,<1.0
 # Database
 SQLAlchemy>=2.0,<3.0
 psycopg[binary]>=3.2,<4.0
+
+# Machine Learning
+scikit-learn>=1.5,<2.0
