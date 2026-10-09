@@ -1,9 +1,12 @@
+import math
+
 import pytest
 
 from src.ml.feature_extractor import (
     BEHAVIORAL_FEATURE_NAMES,
     SCALAR_FEATURE_NAMES,
     extract_bec_007_features,
+    prepare_bec_007_vector,
 )
 
 
@@ -14,6 +17,19 @@ def build_result() -> dict:
             for name in SCALAR_FEATURE_NAMES
         },
         "behavioral_features": {
+            name: 0
+            for name in BEHAVIORAL_FEATURE_NAMES
+        },
+    }
+
+
+def build_feature_dict() -> dict[str, float | int | None]:
+    return {
+        **{
+            name: float(index + 1)
+            for index, name in enumerate(SCALAR_FEATURE_NAMES)
+        },
+        **{
             name: 0
             for name in BEHAVIORAL_FEATURE_NAMES
         },
@@ -103,3 +119,87 @@ def test_extract_bec_007_features_rejects_non_integer_behavioral_flags():
         match="Expected integer value for sending_hour_anomaly",
     ):
         extract_bec_007_features(result)
+
+
+def test_prepare_bec_007_vector_returns_24_numeric_features_in_fixed_order():
+    features = build_feature_dict()
+
+    vector = prepare_bec_007_vector(features)
+
+    assert len(vector) == 24
+    assert all(isinstance(value, float) for value in vector)
+    assert vector[:len(SCALAR_FEATURE_NAMES)] == [
+        float(index + 1)
+        for index in range(len(SCALAR_FEATURE_NAMES))
+    ]
+    assert vector[len(SCALAR_FEATURE_NAMES):] == [
+        0.0
+        for _ in BEHAVIORAL_FEATURE_NAMES
+    ]
+
+
+def test_prepare_bec_007_vector_rejects_none_values():
+    features = build_feature_dict()
+    features["cc_count_ratio"] = None
+
+    with pytest.raises(
+        ValueError,
+        match="Missing value for cc_count_ratio",
+    ):
+        prepare_bec_007_vector(features)
+
+
+def test_prepare_bec_007_vector_rejects_missing_feature_names():
+    features = build_feature_dict()
+    del features["recipient_count"]
+
+    with pytest.raises(
+        ValueError,
+        match="Feature names do not match the expected schema",
+    ):
+        prepare_bec_007_vector(features)
+
+
+def test_prepare_bec_007_vector_rejects_unexpected_feature_names():
+    features = build_feature_dict()
+    features["unexpected_feature"] = 1.0
+
+    with pytest.raises(
+        ValueError,
+        match="Feature names do not match the expected schema",
+    ):
+        prepare_bec_007_vector(features)
+
+
+def test_prepare_bec_007_vector_rejects_non_numeric_values():
+    features = build_feature_dict()
+    features["recipient_count"] = "invalid"
+
+    with pytest.raises(
+        TypeError,
+        match="Expected numeric value for recipient_count",
+    ):
+        prepare_bec_007_vector(features)
+
+
+def test_prepare_bec_007_vector_rejects_boolean_values():
+    features = build_feature_dict()
+    features["recipient_count"] = True
+
+    with pytest.raises(
+        TypeError,
+        match="Expected numeric value for recipient_count",
+    ):
+        prepare_bec_007_vector(features)
+
+
+@pytest.mark.parametrize("value", [math.nan, math.inf, -math.inf])
+def test_prepare_bec_007_vector_rejects_non_finite_values(value):
+    features = build_feature_dict()
+    features["frequency_interval_ratio"] = value
+
+    with pytest.raises(
+        ValueError,
+        match="Expected a finite numeric value for frequency_interval_ratio",
+    ):
+        prepare_bec_007_vector(features)

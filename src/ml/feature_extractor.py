@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 
@@ -49,7 +50,82 @@ def extract_bec_007_features(
     for feature_name in SCALAR_FEATURE_NAMES:
         value = behavioral_metrics.get(feature_name)
 
-        if value is not None and not isinstance(
+        if value is not None and (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+        ):
+            raise TypeError(
+                f"Expected numeric value for {feature_name}, "
+                f"got {type(value).__name__}"
+            )
+
+        if isinstance(value, float) and not math.isfinite(value):
+            raise ValueError(
+                f"Expected a finite numeric value for {feature_name}"
+            )
+
+        features[feature_name] = value
+
+    for feature_name in BEHAVIORAL_FEATURE_NAMES:
+        value = behavioral_features.get(feature_name, 0)
+
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise TypeError(
+                f"Expected integer value for {feature_name}, "
+                f"got {type(value).__name__}"
+            )
+
+        if value not in (0, 1):
+            raise ValueError(
+                f"Expected binary value (0 or 1) for {feature_name}, "
+                f"got {value}"
+            )
+
+        features[feature_name] = value
+
+    return features
+
+
+def prepare_bec_007_vector(
+    features: dict[str, float | int | None],
+) -> list[float]:
+    """Validate and order BEC-007 features into a numeric vector.
+
+    Missing values must be imputed before this function is called.
+
+    Feature ordering follows SCALAR_FEATURE_NAMES, then
+    BEHAVIORAL_FEATURE_NAMES.
+    """
+
+    expected_names = (
+        SCALAR_FEATURE_NAMES + BEHAVIORAL_FEATURE_NAMES
+    )
+
+    expected_set = set(expected_names)
+    actual_set = set(features)
+
+    missing_names = expected_set - actual_set
+    unexpected_names = actual_set - expected_set
+
+    if missing_names or unexpected_names:
+        raise ValueError(
+            "Feature names do not match the expected schema. "
+            f"Missing: {sorted(missing_names)}; "
+            f"unexpected: {sorted(unexpected_names)}"
+        )
+
+    vector: list[float] = []
+
+    for feature_name in expected_names:
+        value = features[feature_name]
+
+        if value is None:
+            raise ValueError(
+                f"Missing value for {feature_name}; "
+                "imputation is required before vector preparation"
+            )
+
+        if isinstance(value, bool) or not isinstance(
             value,
             (int, float),
         ):
@@ -58,17 +134,11 @@ def extract_bec_007_features(
                 f"got {type(value).__name__}"
             )
 
-        features[feature_name] = value
-
-    for feature_name in BEHAVIORAL_FEATURE_NAMES:
-        value = behavioral_features.get(feature_name, 0)
-
-        if not isinstance(value, int):
-            raise TypeError(
-                f"Expected integer value for {feature_name}, "
-                f"got {type(value).__name__}"
+        if not math.isfinite(value):
+            raise ValueError(
+                f"Expected a finite numeric value for {feature_name}"
             )
 
-        features[feature_name] = value
+        vector.append(float(value))
 
-    return features
+    return vector
