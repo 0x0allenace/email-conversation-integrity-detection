@@ -5,33 +5,39 @@
 This document defines the shared interface for unsupervised anomaly-detection
 models used by the Email Conversation Integrity Detection project.
 
-The initial model adapters are planned for:
+The project currently implements four model adapters:
 
 - Isolation Forest
 - Local Outlier Factor (LOF)
 - One-Class Support Vector Machine (One-Class SVM)
 - Gaussian Mixture Model (GMM)
 
-This document defines contracts, not model implementations. Model libraries,
-training logic, scoring logic, and inference integration will be introduced
-in separate tested changes.
+The shared interface is implemented in `src/ml/model_interface.py`, and the
+adapters are implemented in their corresponding modules under `src/ml/`.
+This document describes their common contracts and the implemented behavior.
+It does not imply that model persistence, a complete evaluation workflow, or
+production detection-path integration is complete.
 
 The deterministic BEC-007 detection behavior and result contract must remain
 unchanged.
 
 ## 2. Architecture
 
-The intended pipeline is:
+The experimental ML workflow includes:
 
-1. Deterministic BEC-007 behavioral detection.
-2. ML-1 feature extraction.
-3. ML-2 vector preparation and validation.
-4. ML-3 shared preprocessing and missingness indicators.
-5. Model-specific preprocessing, including scaling where required.
-6. Model training or inference.
-7. Consistent anomaly scores and predictions.
+1. Extraction of the 24 BEC-007 behavioral features.
+2. Feature validation and dataset splitting using the implemented
+   utilities; the calling workflow remains responsible for fitting learned
+   preprocessing and models on training data only.
+3. Shared preprocessing, including median imputation and six missingness
+   indicators, producing 30 numeric features.
+4. Model-specific preprocessing, including scaling where required.
+5. Fitting and scoring through the implemented model adapters.
+6. Consistent anomaly scores and Boolean predictions.
 
 The shared preprocessor remains independent of model-specific scaling.
+These ML components are separate from the deterministic production detection
+path.
 
 ## 3. Common model operations
 
@@ -100,19 +106,18 @@ The shared contract requires that higher scores mean greater anomalousness.
 Each adapter is responsible for converting its algorithm's native output
 to this convention.
 
-Examples of the required interpretation include:
+The implemented adapters follow this convention as follows:
 
-- Isolation Forest: transform native scores as necessary to make larger
-  values indicate greater anomalousness.
-- LOF: use a supported inference mode for unseen observations and normalize
-  the score direction.
-- One-Class SVM: transform its decision-function output as necessary.
-- GMM: a lower likelihood may be represented by a higher negative
-  log-likelihood anomaly score.
+- Isolation Forest negates its native `score_samples` output.
+- LOF uses `novelty=True` to score unseen observations and negates its native
+  `score_samples` output.
+- One-Class SVM uses `StandardScaler` and negates its native `score_samples`
+  output.
+- GMM uses `StandardScaler` and converts log likelihood into negative
+  log-likelihood anomaly scores.
 
-These examples define score interpretation, not implementation details.
-The selected library's exact API and behavior must be verified when each
-adapter is implemented.
+The adapters therefore expose a common score direction while retaining
+model-specific scoring behavior.
 
 ## 6. Threshold and prediction policy
 
@@ -127,12 +132,17 @@ using training data only. Validation and test observations must not influence
 the fitted model or its threshold. Any fixed configuration chosen in advance
 must be documented separately from parameters learned from training data.
 
-The model integration design must document how the threshold is selected,
-including relevant configuration such as a contamination rate or training
-score quantile where appropriate.
+The implemented adapters use model-specific threshold policies:
+
+- Isolation Forest, LOF, and One-Class SVM derive their decision thresholds
+  from the fitted model's offset, using `math.nextafter` to align the
+  threshold with the shared `score >= threshold` prediction contract.
+- GMM selects its threshold from the configured quantile of training
+  anomaly scores, using the configured contamination rate.
 
 A threshold must not be assumed to have the same numeric meaning across
-different model types.
+different model types. These threshold policies do not replace the need for
+a separately documented and executed empirical evaluation protocol.
 
 Predictions use the common Boolean contract:
 
@@ -146,13 +156,16 @@ A successful fit establishes the adapter's fitted state.
 Inference must reuse the fitted model and learned preprocessing parameters.
 It must not refit on validation, test, or incoming inference observations.
 
-A failed or incomplete fit must not be reported as successful.
+A failed or incomplete fit must not be reported as successful. The shared
+interface clears its fitted flag and threshold before attempting a fit and
+marks the adapter fitted only after the fit and threshold validation succeed.
+Callers must use the interface's fitted-state checks rather than assume that
+a failed refit leaves the previous model ready for inference.
 
-Model configuration and the fitted threshold must be inspectable or
-reproducibly recorded by the eventual model integration layer.
-
-The implementation must document how models are persisted and restored
-before persistence is used in production inference.
+Model configuration and fitted thresholds can be inspected through the
+implemented adapter interfaces where exposed. A complete persistence and
+restore workflow has not been established by this interface contract and
+must be documented and tested before persisted models are used for inference.
 
 ## 8. Validation and errors
 
@@ -168,8 +181,8 @@ Adapters must reject:
 Errors must be explicit and must not silently produce normal predictions
 for invalid input.
 
-Empty-batch behavior must be consistent across adapters and explicitly
-tested when the interface is implemented.
+The interface and adapter tests cover empty inference batches. Continue to
+verify this behavior when changing the shared contract or any adapter.
 
 ## 9. Reproducibility and testing
 
@@ -205,9 +218,16 @@ separately from the model interface.
 
 ## 11. Scope
 
-This document does not implement model adapters, scaling, model training,
-threshold calibration, model persistence, or evaluation.
+The shared interface and four model adapters are implemented, including
+model-specific scaling where required, score normalization, and threshold
+selection. Tests cover important interface and adapter behaviors, but the
+existing tests do not establish that every threshold boundary is explicitly
+tested for every model.
 
-Those capabilities will be added in separate, tested changes.
+A complete evaluation runner and metrics workflow, model persistence and
+restoration, and production detection-path integration remain separate work.
+The evaluation protocol must be followed to assess empirical performance;
+the presence of adapters and unit tests alone does not establish detection
+effectiveness.
 
 The deterministic BEC-007 detection behavior must remain unchanged.

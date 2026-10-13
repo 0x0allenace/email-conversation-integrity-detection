@@ -17,8 +17,19 @@ The purpose is to compare these models using a consistent dataset,
 feature schema, data-splitting policy, metric definitions, and
 reproducibility procedure.
 
-This document defines the evaluation policy. It does not implement
-the dataset loader, splitting functions, evaluation runner, or metrics.
+This document defines the evaluation policy and required safeguards
+for comparing the experimental anomaly-detection models.
+
+The repository includes dataset-splitting utilities, shared feature
+preprocessing, a common anomaly-model interface, and four model
+adapters: Isolation Forest, Local Outlier Factor, One-Class SVM, and
+Gaussian Mixture Model.
+
+These components provide ML infrastructure, but they do not by
+themselves establish that a complete comparative evaluation workflow,
+metric-reporting implementation, or reproducible experiment-reporting
+process is available. Those capabilities must be verified separately
+and implemented where they remain absent.
 
 The deterministic BEC-007 detection behavior must remain unchanged.
 
@@ -296,25 +307,47 @@ The implementation must ensure that:
 The evaluation pipeline must not modify the existing deterministic
 BEC-007 rule contract or the shared 30-feature model schema.
 
-## 12. Implementation sequence
+## 12. Implementation status and remaining work
 
-The evaluation implementation will be developed incrementally:
+The following ML infrastructure is implemented:
 
-1. Define and validate the dataset contract.
-2. Implement leakage-safe dataset splitting.
-3. Integrate training-only shared preprocessing.
-4. Integrate all four anomaly-model adapters.
-5. Implement threshold and prediction reporting.
-6. Implement evaluation metrics.
-7. Add end-to-end, leakage, and reproducibility tests.
-8. Run the complete test suite before committing each milestone.
+1. Dataset-splitting utilities supporting stratified random and
+   group-based splitting.
+2. Shared preprocessing that validates the original 24-feature
+   schema and produces the 30-feature representation.
+3. A common anomaly-model interface with standardized score and
+   prediction conventions.
+4. Four model adapters: Isolation Forest, Local Outlier Factor,
+   One-Class SVM, and Gaussian Mixture Model.
+
+The following evaluation capabilities remain to be verified in the
+repository and implemented where absent:
+
+1. A validated evaluation-dataset loader and complete dataset contract.
+2. An end-to-end evaluation runner that uses the existing utilities
+   without data leakage.
+3. Metric calculation and reporting for the metrics defined in Section 8.
+4. Consistent comparison reports for all four models.
+5. Experiment metadata and reproducibility reporting.
+6. End-to-end tests covering leakage prevention, metric edge cases,
+   observation ordering, and reproducibility.
+7. A final full-suite test run before the evaluation milestone is
+   considered complete.
+
+The existence of individual utilities and adapters must not be
+interpreted as evidence that the complete evaluation workflow has
+been implemented or that the models have demonstrated useful
+detection performance.
 
 ## 13. Scope
 
-This protocol defines how the initial models will be evaluated.
+This protocol defines how the initial anomaly-detection models are
+to be evaluated and what safeguards the evaluation must satisfy.
 
-It does not generate the final synthetic dataset, implement splitting,
-train models, tune hyperparameters, implement persistence, or claim
-empirical performance.
+It documents the evaluation requirements; it is not itself an
+evaluation runner and does not establish empirical model performance.
 
-Those activities require separate implementation and testing steps.
+Final dataset generation, complete evaluation orchestration, metric
+reporting, experiment tracking, and persistence must be implemented
+or verified separately. Any performance claims must be supported
+by measured results from a documented evaluation.

@@ -144,9 +144,14 @@ relationship. `frequency_interval_ratio` depends on interval observations.
 Imputing these values independently can create combinations that would
 not occur in genuine observations.
 
-The preprocessing implementation must therefore document how it handles
-these relationships. It must not silently recalculate a ratio from imputed
-values unless that behavior is explicitly designed, tested, and documented.
+The current preprocessing implementation imputes permitted missing
+values using medians learned from the data supplied to `fit()`. It preserves
+the original missingness through separate indicators and does not recalculate
+ratios from imputed values.
+
+This preserves the distinction between an observed ratio and an unavailable
+ratio while allowing the model adapters to consume a complete numeric feature
+representation.
 
 Where a ratio is unavailable, its missingness indicator must remain
 available even after the numeric value has been imputed.
@@ -173,8 +178,8 @@ This prevents information leakage and supports reproducible evaluation.
 
 ## 8. Model Compatibility
 
-The preprocessing layer must provide a consistent numeric feature
-representation for the planned anomaly-detection models:
+The shared preprocessing layer provides a consistent numeric feature
+representation for the implemented anomaly-detection adapters:
 
 - Isolation Forest
 - Local Outlier Factor (LOF)
@@ -187,27 +192,45 @@ behavior, must be handled in the model integration layer.
 The shared feature schema must not change silently between models or
 between training and inference.
 
-## 9. Validation Requirements
+## 9. Validation and Test Coverage
 
-Before the preprocessing implementation is considered complete, tests
-must verify that:
+The existing tests in `tests/test_ml_preprocessing.py` cover core
+preprocessing contracts, including:
 
-- Required current-message features cannot be missing.
-- Legitimately unavailable historical features are handled according to
-  this policy.
-- Missingness indicators accurately represent the original input.
-- Unexpected feature names and missing required feature names are rejected.
+- Required and unexpected feature names are validated.
+- Permitted missing values are handled according to this policy.
 - Non-numeric, non-finite, and invalid binary values are rejected.
+- Missingness indicators represent the original input.
 - Feature ordering remains deterministic.
-- Preprocessing parameters are fitted only on training data.
-- Validation, test, and inference data use the fitted training parameters.
-- The original BEC-007 detection behavior and result contract remain
-  unchanged.
-- Existing regression tests continue to pass.
+- Fitting rejects invalid training input and learns imputation values
+  from the observations supplied to `fit()`.
+- Transformations reuse the fitted imputation values and do not mutate
+  the caller's input data.
+
+These unit tests verify preprocessing behavior, but they do not by
+themselves guarantee that the wider training workflow avoids data
+leakage. The calling workflow must ensure that `fit()` receives only
+training-partition observations and that the fitted preprocessor is reused
+unchanged for validation, test, and inference data.
+
+When preprocessing changes, run the relevant regression tests to check
+that the deterministic BEC-007 detection behavior and result contract
+remain unchanged.
 
 ## 10. Scope
 
-This document establishes the preprocessing policy. It does not implement
-imputation, scaling, model training, model inference, or model evaluation.
+This document establishes the preprocessing policy and describes the
+implemented shared preprocessing behavior in `src/ml/preprocessing.py`.
 
-Those capabilities must be introduced in separate, tested changes.
+The shared preprocessor validates the 24-feature BEC-007 schema, learns
+median imputation values from the data supplied to `fit()`, generates six
+missingness indicators, and transforms observations into the 30-feature
+representation used by the model adapters.
+
+The shared preprocessor does not perform scaling, model training, model
+inference, or model evaluation. Model-specific scaling is handled by the
+applicable adapters.
+
+The caller is responsible for ensuring that `fit()` receives training data
+only and that the fitted preprocessing parameters are reused unchanged for
+validation, test, and inference observations.

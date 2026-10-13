@@ -56,7 +56,7 @@ The current implementation provides:
 - Application-level SIEM configuration
 - Automated test coverage
 
-The project is being developed incrementally. Deterministic and explainable detection techniques are being established before introducing machine-learning-based behavioral anomaly detection.
+The project is being developed incrementally. Deterministic and explainable BEC-001 through BEC-008 rules remain the production detection foundation. Experimental machine-learning infrastructure is also implemented, including Isolation Forest, Local Outlier Factor, One-Class SVM, and Gaussian Mixture Model adapters. These models are not integrated into production detection or production risk scoring.
 
 ---
 
@@ -1354,8 +1354,12 @@ email-conversation-integrity-detection/
 ├── docs/
 │   ├── architecture.md
 │   ├── detection-methodology.md
-│   ├── threat-model.md
-│   └── detection-rules.md
+│   ├── detection-rules.md
+│   ├── ml-adapter-design.md
+│   ├── ml-evaluation-protocol.md
+│   ├── ml-model-interface.md
+│   ├── ml-preprocessing.md
+│   └── threat-model.md
 │
 ├── src/
 │   ├── api/
@@ -1368,6 +1372,16 @@ email-conversation-integrity-detection/
 │   ├── infrastructure/
 │   ├── integrations/
 │   │   └── siem/
+│   ├── ml/
+│   │   ├── __init__.py
+│   │   ├── dataset_split.py
+│   │   ├── feature_extractor.py
+│   │   ├── gmm.py
+│   │   ├── isolation_forest.py
+│   │   ├── lof.py
+│   │   ├── model_interface.py
+│   │   ├── one_class_svm.py
+│   │   └── preprocessing.py
 │   ├── parser/
 │   ├── rules/
 │   └── scoring/
@@ -1417,7 +1431,7 @@ Detection rules are registered through the detection engine's rule registry.
 | Containers | Docker / Docker Compose |
 | SIEM | Splunk / Elastic / Wazuh |
 | Testing | Pytest |
-| Future ML | Scikit-learn / PyTorch / TensorFlow |
+| Experimental ML | NumPy / scikit-learn (Isolation Forest, LOF, One-Class SVM, GMM adapters) |
 
 Additional technologies will be introduced as the relevant detection and research components are implemented.
 
@@ -1447,7 +1461,7 @@ Layer 8 — Risk Scoring
 Layer 9 — SIEM / SOC Integration
 ```
 
-The implementation prioritizes deterministic and explainable detections before introducing machine-learning-based anomaly detection.
+Deterministic and explainable BEC-001 through BEC-008 rules remain the production detection foundation. Experimental ML adapters provide a separate research path for behavioral anomaly detection; they are not integrated into production detection or production risk scoring. Model effectiveness must be established through documented evaluation before production integration is considered.
 
 Each layer is designed to produce evidence that can be inspected by a security analyst rather than relying exclusively on a final classification.
 
@@ -1689,7 +1703,8 @@ Verify repository state
 | Application SIEM configuration | ✅ |
 | Behavioral detection expansion | ⏳ |
 | Content detection expansion | ⏳ |
-| ML anomaly detection | ⏳ |
+| Experimental ML adapters (Isolation Forest, LOF, One-Class SVM, GMM) | ✅ Implemented; experimental only |
+| End-to-end ML evaluation, metrics, and experiment tracking | ⏳ |
 
 > BEC-007 has an operational deterministic implementation, but behavioral detection expansion remains in progress as additional historical communication signals are added and validated.
 
@@ -1714,11 +1729,11 @@ Potential future capabilities include:
 - Expanded behavioral detection
 - Expanded semantic content analysis
 - Attachment-aware content analysis
-- Machine-learning anomaly detection
-  - Isolation Forest
-  - Local Outlier Factor
-  - One-Class SVM
-  - Autoencoder-based behavioral detection
+- End-to-end ML evaluation, metrics, and experiment tracking
+- Evaluation dataset and experiment metadata workflows
+- Model persistence and restoration
+- Autoencoder-based behavioral detection
+- Production integration of ML scores, only after evaluation and validation
 - Analyst feedback loops
 - Case management
 - Expanded SIEM dashboards and detection workflows
@@ -1727,36 +1742,26 @@ Potential future capabilities include:
 
 ## Research Direction
 
-A future experimental component will investigate whether unsupervised machine learning can identify abnormal email communication behavior without requiring labeled attack datasets.
+The project includes experimental unsupervised machine-learning infrastructure for researching anomalous email communication behavior. The current feature extractor produces a fixed schema of 24 features: 9 scalar metrics and 15 behavioral indicators. Shared preprocessing validates this schema, applies median imputation where allowed, and adds six missingness indicators to produce a 30-feature model input.
 
-**Potential features include:**
+These components remain separate from production detection and production risk scoring. Deterministic BEC-001 through BEC-008 rules remain the production detection foundation.
 
-- `sender_frequency`
-- `recipient_frequency`
-- `sending_hour`
-- `response_time`
-- `participant_count`
-- `subject_similarity`
-- `body_similarity`
-- `body_length`
-- `attachment_frequency`
-- `sender_infrastructure_frequency`
-- `domain_similarity`
-- `authentication_results`
-- `reply_to_frequency`
-- `recipient_cooccurrence_frequency`
-- `recipient_role_frequency`
-
-**Candidate models include:**
+**Implemented experimental model adapters:**
 
 - Isolation Forest
 - Local Outlier Factor
 - One-Class SVM
-- Autoencoder-based anomaly detection
+- Gaussian Mixture Model
 
-The ML layer will remain separate from the deterministic detection engine so that the system can compare rule-based, behavioral, and content-based approaches.
+**Research and engineering work still needed:**
 
----
+- Build and validate an end-to-end evaluation workflow.
+- Define evaluation datasets, metrics, reporting, and experiment metadata.
+- Evaluate model behavior against deterministic baselines while preventing data leakage.
+- Investigate additional features, including response-time patterns and semantic or infrastructure signals.
+- Consider Autoencoder-based anomaly detection as a future model extension.
+
+The presence of a model adapter does not establish its effectiveness. Production integration should be considered only after documented evaluation and validation.
 
 ## Current Architecture
 

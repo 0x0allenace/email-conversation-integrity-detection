@@ -1648,18 +1648,33 @@ Detection results are intended to support SOC investigation. The system provides
 
 ---
 
-## Future Methodology
+## Experimental Machine-Learning Methodology
 
-Future development may introduce statistical and machine-learning-based behavioral detection.
+The repository now includes experimental machine-learning infrastructure for researching anomalous email communication behaviour. This infrastructure is separate from the production detection methodology described in this document.
 
-**Potential models include:**
+The deterministic BEC-001 through BEC-008 rules remain the production detection foundation. The presence of feature-processing utilities and model adapters does not mean that machine-learning scores are used by the production detection engine or included in production risk scoring.
 
-- Isolation Forest
-- Local Outlier Factor
-- One-Class SVM
-- Autoencoder-based anomaly detection
+### Implemented ML Infrastructure
 
-The ML layer will remain separate from the deterministic detection engine so that rule-based and statistical approaches can be evaluated independently.
+**The implemented components include:**
+
+- Feature schema: the BEC-007 feature extractor produces 24 features: nine scalar features and 15 behavioural features.
+- Dataset splitting: utilities support stratified random and group-based splitting.
+- Shared preprocessing: validates the expected feature schema, median-imputes permitted missing values, and adds six missingness indicators, producing a 30-feature representation.
+- Common model interface: standardizes fitting, anomaly scoring, prediction, thresholds, and fitted-state checks.
+- Model adapters: Isolation Forest, Local Outlier Factor, One-Class SVM, and Gaussian Mixture Model.
+
+Higher anomaly scores indicate greater anomalousness, and a score greater than or equal to the fitted threshold predicts an anomaly. The adapters use model-specific scoring and threshold strategies.
+
+### Evaluation Requirements and Limitations
+
+The available infrastructure does not, by itself, establish a complete end-to-end comparative evaluation workflow, comprehensive metrics reporting, experiment tracking, or model persistence and restoration.
+
+Learned preprocessing and models must be fitted on training data only and then reused for validation and testing. Dataset splitting utilities provide building blocks for leakage-aware evaluation, but callers remain responsible for using them correctly.
+
+Empirical detection effectiveness must be established through documented evaluation before claims about model performance are made. Autoencoder-based anomaly detection remains a potential future extension.
+
+### Future Content and Attachment Analysis
 
 **Potential future content-analysis capabilities may include:**
 
@@ -1680,8 +1695,6 @@ The ML layer will remain separate from the deterministic detection engine so tha
 - Reputation enrichment
 
 These capabilities are not currently part of BEC-008.
-
-Future statistical or machine-learning detection should build on clearly defined observation sources, sufficient historical data, measurable baselines, and explainable evidence.
 
 ---
 
@@ -1732,4 +1745,4 @@ The current detection methodology can be summarized as:
          Persistence       Optional SIEM
 ```
 
-The methodology is intentionally deterministic, baseline-aware, evidence-first, and extensible. It establishes an explainable foundation for future statistical and machine-learning-based detection without making the current system dependent on opaque models.
+The production methodology is deterministic, baseline-aware, and evidence-first. Experimental machine-learning infrastructure is available for research, but it remains separate from production detection. Its effectiveness must be established through documented evaluation before any production integration is considered.

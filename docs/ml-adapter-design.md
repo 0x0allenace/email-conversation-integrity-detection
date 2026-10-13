@@ -2,11 +2,11 @@
 
 ## 1. Purpose
 
-This document defines the integration requirements for the initial
+This document describes the design and implementation of the
 unsupervised anomaly-detection model adapters used by Email Conversation
 Integrity Detection.
 
-The planned models are:
+The implemented models are:
 
 - Isolation Forest
 - Local Outlier Factor (LOF)
@@ -14,15 +14,16 @@ The planned models are:
 - Gaussian Mixture Model (GMM)
 
 This document extends `docs/ml-model-interface.md` and
-`docs/ml-preprocessing.md`. It specifies architecture and integration
-requirements; it does not implement or train the models.
+`docs/ml-preprocessing.md`. The four adapters and their common interface
+are implemented, but a complete empirical evaluation workflow, model
+persistence, and production detection-path integration remain outstanding.
 
 The deterministic BEC-007 behavior, evidence, and result contract must
 remain unchanged.
 
 ## 2. Architecture
 
-The intended processing flow is:
+The experimental ML processing flow is:
 
 1. Analyze the message using the existing deterministic BEC-007 rule.
 2. Extract the established 24 ML features.
@@ -81,76 +82,63 @@ unchanged for validation, testing, and inference.
 The adapter or its dedicated preprocessing component must retain the
 feature order and fitted preprocessing state required for inference.
 
-The initial scaling policy is:
+The implemented scaling policy is:
 
-- Isolation Forest: begin without mandatory scaling; evaluate whether
-  scaling is useful for the selected feature distributions.
-- LOF: scale features because distance-based neighborhood calculations
-  can be dominated by features with larger numeric ranges.
-- One-Class SVM: scale features because its kernel and distance behavior
-  are sensitive to feature magnitude.
-- GMM: evaluate feature scaling explicitly; use a training-fitted scaler
-  for the initial implementation so feature magnitudes do not arbitrarily
-  dominate the fitted density model.
+- Isolation Forest: no scaler is applied by the adapter.
+- LOF: `StandardScaler` is used.
+- One-Class SVM: `StandardScaler` is used.
+- GMM: `StandardScaler` is used.
 
-Any deviation from these initial choices must be justified and evaluated.
-Scaling parameters must never be fitted using validation, test, or inference
-data.
+The adapters retain the fitted scaling state required for inference where
+scaling is applied. The calling training workflow must ensure that any
+learned preprocessing is fitted using training observations only and then
+reused unchanged for validation, test, and inference observations. The
+existence of the adapters does not by itself establish that the entire
+workflow enforces this separation.
 
 ## 5. Score direction and threshold policies
 
 Every adapter must convert native outputs to the common convention:
 higher scores indicate greater anomalousness.
 
-Threshold calibration must be explicit. The initial policy is to
-derive thresholds from training-partition scores, unless a fixed threshold
-was configured before model fitting. Validation data may be used for
-documented model and hyperparameter selection, but must not be used to
-calibrate the threshold under this policy. Test data must never be used
-to select or tune the threshold.
+Threshold selection is model-specific in the implemented adapters.
+Isolation Forest, LOF, and One-Class SVM derive thresholds from their fitted
+model offsets, using `math.nextafter` to align threshold comparisons with
+the shared `score >= threshold` prediction contract. GMM selects a threshold
+from its training anomaly-score quantile using the configured contamination
+rate.
+
+The evaluation workflow must still prevent test data from influencing
+model selection or threshold tuning. Adapter unit tests do not by themselves
+prove that the complete data workflow prevents leakage.
 
 A threshold is model-specific. Numeric thresholds must not be compared
 directly across algorithms as though they had equivalent meanings.
 
 ### 5.1 Isolation Forest
 
-Isolation Forest implementations commonly expose a decision function or
-anomaly score with a direction that must be verified for the selected
-library.
-
-The adapter must transform the chosen native output so larger values mean
-more anomalous behavior.
-
-The implementation must document the selected contamination or threshold
-policy. If the threshold is derived from training scores, it must be
-calibrated from training observations only.
+The implemented adapter negates the native `score_samples` output so
+larger values indicate greater anomalousness. Its threshold is derived from
+the fitted model offset and adjusted using `math.nextafter` to align with
+the common prediction comparison. The selected contamination configuration
+and threshold behavior should be considered when interpreting results.
 
 ### 5.2 Local Outlier Factor
 
-LOF must use a supported novelty-detection configuration for scoring
-previously unseen observations. Training-set outlier-detection behavior
-must not be assumed to provide equivalent inference semantics.
-
-The adapter must verify the selected library's score direction and convert
-its native novelty scores so larger values indicate greater anomalousness.
-
-Any threshold derived from training scores must be selected using the
-training partition only. The implementation must document how training
-scores are obtained and how that choice relates to novelty scoring for
-unseen observations.
+The implemented adapter uses `novelty=True` to score previously unseen
+observations and negates the native `score_samples` output so larger values
+indicate greater anomalousness. Its threshold is derived from the fitted
+model offset and adjusted using `math.nextafter` to align with the common
+prediction comparison.
 
 ### 5.3 One-Class SVM
 
-The adapter must verify the selected library's decision-function convention
-and transform scores as necessary so larger values indicate greater
-anomalousness.
-
-The implementation must document the role of configuration such as `nu`
-and distinguish the model's native decision boundary from any additional
-threshold calibration.
-
-If a separate threshold is calibrated from scores, calibration must use
-training observations only.
+The implemented adapter uses `StandardScaler` and negates the native
+`score_samples` output so larger values indicate greater anomalousness.
+Its threshold is derived from the fitted model offset and adjusted using
+`math.nextafter` to align with the common prediction comparison. The `nu`
+configuration remains a model parameter and should not be confused with
+the shared interface's explicit threshold.
 
 ### 5.4 Gaussian Mixture Model
 
@@ -161,12 +149,13 @@ The adapter must convert log-likelihood to an anomaly score, for example
 by negating the log-likelihood so lower likelihood produces a higher
 anomaly score.
 
-The implementation must document its component-count selection policy,
-covariance configuration, convergence checks, and threshold policy.
-
-Any model selection or threshold calibration must follow the documented
-training and validation protocol. Test data must not be used to select
-components or calibrate the threshold.
+The implemented adapter uses `StandardScaler`, scores observations using
+negative log likelihood, and selects its threshold from the training-score
+quantile determined by the configured contamination rate. It rejects a
+fit when the GMM does not converge and validates the contamination
+configuration. Component-count selection and empirical comparison still
+belong to the documented evaluation workflow; test data must not be used
+for model selection or threshold tuning.
 
 ## 6. Training and evaluation separation
 
@@ -197,11 +186,15 @@ isolated.
 
 ## 7. Fitting, refitting, and inference
 
-A successful fit must establish a complete and internally consistent state
-containing the fitted model, required preprocessing state, configuration,
-and threshold.
+A successful fit must establish the fitted state required by the shared
+interface. The interface clears its fitted flag and threshold before a fit
+attempt and marks the adapter fitted only after fitting and threshold
+validation succeed.
 
-If fitting fails, the adapter must not report itself as fitted.
+If fitting fails, the adapter must not report itself as fitted. This does
+not guarantee that every internal model or scaler object is reset; callers
+must rely on the public fitted-state checks and must not infer that a
+previous model remains ready for inference after a failed refit.
 
 Inference must reuse the fitted model and fitted preprocessing state. It
 must not learn new imputation values, scaling parameters, model parameters,
@@ -216,8 +209,7 @@ without violating the public interface.
 
 ## 8. Configuration and reproducibility
 
-Each adapter must expose or record the configuration required to reproduce
-its fitted behavior, including where applicable:
+Reproducibility requires documenting or recording configuration such as:
 
 - Algorithm name and library version.
 - Feature schema and ordering.
@@ -225,11 +217,15 @@ its fitted behavior, including where applicable:
 - Model hyperparameters.
 - Random-state configuration when supported.
 - Threshold-selection method and fitted threshold.
-- Training-data version or identifier.
+- Training-data version or identifier, when the workflow records it.
 - Fit status and relevant convergence diagnostics.
 
-GMM implementations must report unsuccessful convergence rather than
-silently treating an invalid or incomplete fit as successful.
+The adapter tests cover important configuration, fitting, scoring, and
+validation behaviors, but the presence of adapters does not establish that
+all experiment metadata is automatically recorded.
+
+GMM rejects unsuccessful convergence rather than silently treating an
+invalid or incomplete fit as successful.
 
 Random-state settings must be explicit where the selected implementation
 supports them. Reproducibility expectations and limitations must be
@@ -257,7 +253,9 @@ documented numerical tolerances.
 
 ## 10. Adapter testing requirements
 
-Each real adapter must have tests for:
+The existing real-adapter tests cover core fitting, scoring, and validation
+behavior. Test coverage should be maintained and expanded for the following
+contracts, with gaps distinguished from verified behavior:
 
 - Successful fitting on valid training observations.
 - Rejection of empty training data.
@@ -265,7 +263,8 @@ Each real adapter must have tests for:
 - Exact feature schema and deterministic feature ordering.
 - Score count matching input observation count.
 - Finite score validation and common score direction.
-- Threshold behavior below, at, and above the threshold.
+- Threshold behavior below, at, and above the threshold for each adapter;
+  this full boundary coverage is not established for every model.
 - No refitting or state changes during inference.
 - Correct reuse of fitted preprocessing parameters.
 - Training-only threshold calibration.
@@ -282,19 +281,20 @@ but must not be supplied as model features.
 
 ## 11. Implementation sequence
 
-The adapters should be implemented and reviewed incrementally:
+The four model adapters are implemented:
 
-1. Confirm the selected library APIs and dependency policy.
-2. Implement Isolation Forest as the initial reference adapter.
-3. Test the real model's score direction, threshold behavior, and inference.
-4. Implement LOF with explicit novelty-detection semantics.
-5. Implement One-Class SVM with fitted scaling.
-6. Implement GMM with density-based anomaly scoring and convergence checks.
-7. Compare models under the same documented data-splitting and evaluation
-   protocol.
-8. Add persistence only after fitted-state and inference contracts are stable.
+1. Isolation Forest uses native score normalization and offset-based
+   thresholding.
+2. LOF uses novelty detection, `StandardScaler`, and offset-based thresholding.
+3. One-Class SVM uses `StandardScaler` and offset-based thresholding.
+4. GMM uses `StandardScaler`, negative log-likelihood scoring, a
+   training-score quantile threshold, and convergence validation.
 
-Each adapter must be introduced in a separate, tested change where practical.
+The remaining work includes executing a documented empirical comparison
+under the data-splitting and evaluation protocol, expanding any missing
+threshold-boundary tests, recording experiment metadata where needed, and
+implementing and testing model persistence.
+
 No adapter may change deterministic BEC-007 behavior or the shared 30-feature
 schema.
 

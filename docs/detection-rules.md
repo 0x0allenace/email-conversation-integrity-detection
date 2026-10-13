@@ -1497,7 +1497,7 @@ The risk score is generated from observable indicators associated with the rule.
 
 Individual detection scores are capped at 100.
 
-The overall analysis can combine risk contributions from matched detections.
+The overall analysis sums the risk scores of matched detections. This aggregate is not necessarily capped at 100.
 
 BEC-007 and BEC-008 contribute to the analysis when their respective behavioral or content conditions are satisfied.
 
@@ -1685,7 +1685,7 @@ Every detection should be supported by observable evidence.
 Historical anomalies are meaningful only when the historical baseline is sufficiently established and representative.
 
 **Deterministic First**
-The current detection foundation uses deterministic rules before introducing statistical or machine-learning-based analysis.
+The production detection foundation uses deterministic rules. Experimental ML infrastructure, including Isolation Forest, Local Outlier Factor, One-Class SVM, and Gaussian Mixture Model adapters, is available for research but is not integrated into production detection or production risk scoring.
 
 **Independent Signals**
 Individual signals are evaluated independently so that multiple inconsistencies can be preserved rather than collapsed into a single opaque decision.

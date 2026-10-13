@@ -465,6 +465,36 @@ External SIEM platforms can be configured through the application environment.
 
 ---
 
+## Experimental Machine-Learning Architecture
+
+The repository contains experimental machine-learning components for research into anomalous email communication behaviour. These components remain separate from the production detection path described above.
+
+The deterministic BEC-001 through BEC-008 rules remain the production detection foundation. The presence of ML utilities and adapters does not mean their scores are used by the production detection engine or included in production risk scoring.
+
+### Implemented ML Components
+
+The experimental pipeline contains the following components:
+
+- **Feature schema:** the BEC-007 feature extractor produces 24 features: nine scalar features and 15 behavioural features.
+- **Dataset splitting:** utilities support stratified random and group-based splitting. The calling workflow remains responsible for choosing an appropriate strategy and preventing data leakage.
+- **Shared preprocessing:** validates the expected input schema, median-imputes permitted missing values, and adds six missingness indicators, producing a 30-feature representation.
+- **Model interface:** provides a common contract for fitting, scoring, prediction, threshold handling, and fitted-state checks.
+- **Model adapters:** Isolation Forest, Local Outlier Factor, One-Class SVM, and Gaussian Mixture Model are implemented.
+
+### Scoring and Thresholds
+
+The adapters standardize their outputs so that higher scores indicate greater anomalousness. A score greater than or equal to the fitted threshold predicts an anomaly.
+
+Isolation Forest, Local Outlier Factor, and One-Class SVM derive their thresholds from their fitted model offsets. Gaussian Mixture Model uses a quantile of its training anomaly scores. Scaling is model-specific rather than universally applied by the shared preprocessor.
+
+### Limitations and Separation from Production
+
+The available components do not, by themselves, establish a complete end-to-end evaluation runner, a comprehensive metrics-reporting process, experiment tracking, or model persistence and restoration.
+
+Learned preprocessing and models must be fitted on training data only and then reused for validation and testing. Empirical detection effectiveness must be established through documented evaluation. ML results must not be represented as production detections unless an explicit, tested integration is implemented.
+
+---
+
 ## Design Principles
 
 The architecture follows these principles:
