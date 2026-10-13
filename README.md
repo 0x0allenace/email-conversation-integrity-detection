@@ -1514,7 +1514,7 @@ pytest -q
 **Current verified regression baseline:**
 
 ```text
-386 passed
+572 passed
 1 warning
 ```
 
@@ -1524,7 +1524,7 @@ The current BEC-008 targeted suite contains:
 81 passed
 ```
 
-The project-wide regression currently covers 386 tests across the API, database, email-analysis, detection-rule, scoring, engine, and SIEM components.
+The project-wide regression currently covers 572 tests across the API, database, email-analysis, detection-rule, scoring, engine, SIEM, and experimental ML components.
 
 The single warning currently originates from the installed Starlette/httpx testing dependency stack:
 
@@ -1703,6 +1703,7 @@ Verify repository state
 | Application SIEM configuration | ✅ |
 | Behavioral detection expansion | ⏳ |
 | Content detection expansion | ⏳ |
+| ML dataset-splitting utilities (stratified and group-based) | ✅ Implemented |
 | Experimental ML adapters (Isolation Forest, LOF, One-Class SVM, GMM) | ✅ Implemented; experimental only |
 | End-to-end ML evaluation, metrics, and experiment tracking | ⏳ |
 
@@ -1745,6 +1746,8 @@ Potential future capabilities include:
 The project includes experimental unsupervised machine-learning infrastructure for researching anomalous email communication behavior. The current feature extractor produces a fixed schema of 24 features: 9 scalar metrics and 15 behavioral indicators. Shared preprocessing validates this schema, applies median imputation where allowed, and adds six missingness indicators to produce a 30-feature model input.
 
 These components remain separate from production detection and production risk scoring. Deterministic BEC-001 through BEC-008 rules remain the production detection foundation.
+
+Dataset-splitting utilities support stratified random and group-based strategies, with default train/validation/test ratios of 70/15/15 and a random seed of 42. Stratified splitting approximately preserves class proportions; group-based splitting keeps records from the same group in one partition to reduce group-related data leakage, although class balance is not guaranteed. See the [ML Evaluation Protocol](docs/ml-evaluation-protocol.md) for the evaluation requirements and safeguards. The complete evaluation workflow, metrics reporting, and experiment tracking remain ongoing work.
 
 **Implemented experimental model adapters:**
 
