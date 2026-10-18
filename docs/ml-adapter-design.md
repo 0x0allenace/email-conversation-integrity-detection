@@ -14,9 +14,10 @@ The implemented models are:
 - Gaussian Mixture Model (GMM)
 
 This document extends `docs/ml-model-interface.md` and
-`docs/ml-preprocessing.md`. The four adapters and their common interface
-are implemented, but a complete empirical evaluation workflow, model
-persistence, and production detection-path integration remain outstanding.
+`docs/ml-preprocessing.md`. The four adapters, their common interface,
+and an experimental evaluation workflow are implemented. Model
+persistence and production detection-path integration remain outstanding.
+The synthetic benchmark does not establish real-world detection effectiveness.
 
 The deterministic BEC-007 behavior, evidence, and result contract must
 remain unchanged.
@@ -108,9 +109,11 @@ the shared `score >= threshold` prediction contract. GMM selects a threshold
 from its training anomaly-score quantile using the configured contamination
 rate.
 
-The evaluation workflow must still prevent test data from influencing
-model selection or threshold tuning. Adapter unit tests do not by themselves
-prove that the complete data workflow prevents leakage.
+The implemented evaluation workflow separates training, validation, and
+test partitions, and its tests cover key leakage-prevention requirements.
+Test data must remain reserved for final evaluation and must not influence
+preprocessing, model fitting, feature selection, or threshold selection.
+The synthetic benchmark does not establish real-world detection effectiveness.
 
 A threshold is model-specific. Numeric thresholds must not be compared
 directly across algorithms as though they had equivalent meanings.
@@ -290,10 +293,11 @@ The four model adapters are implemented:
 4. GMM uses `StandardScaler`, negative log-likelihood scoring, a
    training-score quantile threshold, and convergence validation.
 
-The remaining work includes executing a documented empirical comparison
-under the data-splitting and evaluation protocol, expanding any missing
-threshold-boundary tests, recording experiment metadata where needed, and
-implementing and testing model persistence.
+Remaining work includes strengthening threshold-boundary test coverage
+where needed, improving experiment metadata and reproducibility practices,
+and implementing and testing model persistence. Further empirical
+evaluation on representative, appropriately labeled email data is needed
+before making claims about real-world detection effectiveness.
 
 No adapter may change deterministic BEC-007 behavior or the shared 30-feature
 schema.

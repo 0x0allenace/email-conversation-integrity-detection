@@ -489,7 +489,7 @@ Isolation Forest, Local Outlier Factor, and One-Class SVM derive their threshold
 
 ### Limitations and Separation from Production
 
-The available components do not, by themselves, establish a complete end-to-end evaluation runner, a comprehensive metrics-reporting process, experiment tracking, or model persistence and restoration.
+The repository includes an experimental end-to-end evaluation runner, metrics calculation, and JSON report generation. Reports record dataset and split metadata, preprocessing information, model configurations, thresholds, software versions, and evaluation results. A dedicated experiment-tracking system and model persistence and restoration are not currently implemented.
 
 Learned preprocessing and models must be fitted on training data only and then reused for validation and testing. Empirical detection effectiveness must be established through documented evaluation. ML results must not be represented as production detections unless an explicit, tested integration is implemented.
 

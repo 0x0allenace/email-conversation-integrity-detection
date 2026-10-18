@@ -1705,7 +1705,8 @@ Verify repository state
 | Content detection expansion | ⏳ |
 | ML dataset-splitting utilities (stratified and group-based) | ✅ Implemented |
 | Experimental ML adapters (Isolation Forest, LOF, One-Class SVM, GMM) | ✅ Implemented; experimental only |
-| End-to-end ML evaluation, metrics, and experiment tracking | ⏳ |
+| End-to-end ML evaluation, metrics, and JSON reporting | ✅ Implemented; experimental only |
+| Dedicated experiment tracking | ⏳ |
 
 > BEC-007 has an operational deterministic implementation, but behavioral detection expansion remains in progress as additional historical communication signals are added and validated.
 
@@ -1730,8 +1731,7 @@ Potential future capabilities include:
 - Expanded behavioral detection
 - Expanded semantic content analysis
 - Attachment-aware content analysis
-- End-to-end ML evaluation, metrics, and experiment tracking
-- Evaluation dataset and experiment metadata workflows
+- Dedicated experiment-tracking system
 - Model persistence and restoration
 - Autoencoder-based behavioral detection
 - Production integration of ML scores, only after evaluation and validation
@@ -1747,7 +1747,7 @@ The project includes experimental unsupervised machine-learning infrastructure f
 
 These components remain separate from production detection and production risk scoring. Deterministic BEC-001 through BEC-008 rules remain the production detection foundation.
 
-Dataset-splitting utilities support stratified random and group-based strategies, with default train/validation/test ratios of 70/15/15 and a random seed of 42. Stratified splitting approximately preserves class proportions; group-based splitting keeps records from the same group in one partition to reduce group-related data leakage, although class balance is not guaranteed. See the [ML Evaluation Protocol](docs/ml-evaluation-protocol.md) for the evaluation requirements and safeguards. The complete evaluation workflow, metrics reporting, and experiment tracking remain ongoing work.
+Dataset-splitting utilities support stratified random and group-based strategies, with default train/validation/test ratios of 70/15/15 and a random seed of 42. Stratified splitting approximately preserves class proportions; group-based splitting keeps records from the same group in one partition to reduce group-related data leakage, although class balance is not guaranteed. See the [ML Evaluation Protocol](docs/ml-evaluation-protocol.md) for the evaluation requirements and safeguards. An end-to-end experimental evaluation workflow, metrics calculation, and JSON reporting are implemented. Reports record experiment settings and evaluation metadata, but a dedicated experiment-tracking system is not currently implemented. The synthetic benchmark does not establish real-world detection effectiveness.
 
 **Implemented experimental model adapters:**
 
@@ -1758,9 +1758,9 @@ Dataset-splitting utilities support stratified random and group-based strategies
 
 **Research and engineering work still needed:**
 
-- Build and validate an end-to-end evaluation workflow.
-- Define evaluation datasets, metrics, reporting, and experiment metadata.
-- Evaluate model behavior against deterministic baselines while preventing data leakage.
+- Validate model performance using appropriately governed, representative, labeled email data.
+- Evaluate experimental models against deterministic baselines using leakage-aware evaluation.
+- Assess validation-driven model selection, threshold calibration, and additional behavioral features.
 - Investigate additional features, including response-time patterns and semantic or infrastructure signals.
 - Consider Autoencoder-based anomaly detection as a future model extension.
 

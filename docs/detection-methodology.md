@@ -1668,7 +1668,7 @@ Higher anomaly scores indicate greater anomalousness, and a score greater than o
 
 ### Evaluation Requirements and Limitations
 
-The available infrastructure does not, by itself, establish a complete end-to-end comparative evaluation workflow, comprehensive metrics reporting, experiment tracking, or model persistence and restoration.
+The repository includes an experimental evaluation runner, metrics calculation, and JSON reporting. The current benchmark uses synthetic data and does not establish real-world detection effectiveness. A dedicated experiment-tracking system and model persistence and restoration are not currently implemented.
 
 Learned preprocessing and models must be fitted on training data only and then reused for validation and testing. Dataset splitting utilities provide building blocks for leakage-aware evaluation, but callers remain responsible for using them correctly.
 

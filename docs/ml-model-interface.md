@@ -15,8 +15,9 @@ The project currently implements four model adapters:
 The shared interface is implemented in `src/ml/model_interface.py`, and the
 adapters are implemented in their corresponding modules under `src/ml/`.
 This document describes their common contracts and the implemented behavior.
-It does not imply that model persistence, a complete evaluation workflow, or
-production detection-path integration is complete.
+It does not imply that model persistence, restoration, or production
+detection-path integration is complete. The experimental evaluation
+workflow is implemented separately.
 
 The deterministic BEC-007 detection behavior and result contract must remain
 unchanged.
@@ -224,10 +225,12 @@ selection. Tests cover important interface and adapter behaviors, but the
 existing tests do not establish that every threshold boundary is explicitly
 tested for every model.
 
-A complete evaluation runner and metrics workflow, model persistence and
-restoration, and production detection-path integration remain separate work.
-The evaluation protocol must be followed to assess empirical performance;
+The experimental evaluation runner and metrics workflow are implemented
+separately from the model interface. Model persistence and restoration,
+and production detection-path integration, remain outstanding. The
+evaluation protocol must be followed to assess empirical performance;
 the presence of adapters and unit tests alone does not establish detection
-effectiveness.
+effectiveness. The current synthetic benchmark does not establish
+real-world detection effectiveness.
 
 The deterministic BEC-007 detection behavior must remain unchanged.
