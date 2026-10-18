@@ -6,6 +6,9 @@ import math
 from typing import Any
 
 
+BEC007_FEATURE_SCHEMA_VERSION = "1.0.0"
+
+
 SCALAR_FEATURE_NAMES = (
     "frequency_interval_ratio",
     "recipient_count",

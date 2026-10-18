@@ -25,11 +25,16 @@ preprocessing, a common anomaly-model interface, and four model
 adapters: Isolation Forest, Local Outlier Factor, One-Class SVM, and
 Gaussian Mixture Model.
 
-These components provide ML infrastructure, but they do not by
-themselves establish that a complete comparative evaluation workflow,
-metric-reporting implementation, or reproducible experiment-reporting
-process is available. Those capabilities must be verified separately
-and implemented where they remain absent.
+The repository also includes an end-to-end evaluation runner and
+an official command-line benchmark in `scripts/run_ml_evaluation.py`.
+The workflow generates a versioned synthetic dataset, partitions it
+before fitting learned preprocessing, evaluates the four adapters on
+a shared held-out test partition, calculates the required metrics, and
+writes a reproducibility-oriented JSON report.
+
+The implementation and its tests establish that the workflow can run
+under the tested synthetic conditions. They do not establish real-world
+business email compromise detection efficacy.
 
 The deterministic BEC-007 detection behavior must remain unchanged.
 
@@ -309,45 +314,108 @@ BEC-007 rule contract or the shared 30-feature model schema.
 
 ## 12. Implementation status and remaining work
 
-The following ML infrastructure is implemented:
+### 12.1 Implemented capabilities
 
-1. Dataset-splitting utilities supporting stratified random and
-   group-based splitting.
-2. Shared preprocessing that validates the original 24-feature
-   schema and produces the 30-feature representation.
-3. A common anomaly-model interface with standardized score and
+The repository currently implements:
+
+1. A versioned synthetic BEC-007 dataset generator with configurable
+   observation count, anomaly rate, group size, and random seed.
+2. Dataset splitting with stratified-random and group-based strategies.
+3. Shared preprocessing that validates the original 24-feature schema
+   and produces the 30-feature model representation.
+4. Training-only fitting of shared preprocessing and model-specific
+   scalers.
+5. A common anomaly-model interface with standardized score and
    prediction conventions.
-4. Four model adapters: Isolation Forest, Local Outlier Factor,
+6. Four model adapters: Isolation Forest, Local Outlier Factor,
    One-Class SVM, and Gaussian Mixture Model.
+7. An evaluation runner that evaluates models against the same held-out
+   test observations and records per-model results, warnings, and errors.
+8. Metric calculation for precision, recall, F1, false-positive rate,
+   average precision, and the four confusion-matrix counts.
+9. A command-line entry point that generates a JSON report containing
+   dataset metadata, split identifiers and counts, feature-schema
+   information, preprocessing state, model configurations, thresholds,
+   software versions, metrics, and experiment settings.
+10. Tests covering evaluation metrics, splitting, preprocessing,
+    model integration, reproducibility, CLI argument validation,
+    report serialization, and output-file protection.
 
-The following evaluation capabilities remain to be verified in the
-repository and implemented where absent:
+The validation partition is reserved by the current runner but is not
+used for hyperparameter selection or threshold tuning. Model thresholds
+follow the adapters' existing policies; they are not optimized against
+the held-out test partition.
 
-1. A validated evaluation-dataset loader and complete dataset contract.
-2. An end-to-end evaluation runner that uses the existing utilities
-   without data leakage.
-3. Metric calculation and reporting for the metrics defined in Section 8.
-4. Consistent comparison reports for all four models.
-5. Experiment metadata and reproducibility reporting.
-6. End-to-end tests covering leakage prevention, metric edge cases,
-   observation ordering, and reproducibility.
-7. A final full-suite test run before the evaluation milestone is
-   considered complete.
+### 12.2 Verification status and remaining limitations
 
-The existence of individual utilities and adapters must not be
-interpreted as evidence that the complete evaluation workflow has
-been implemented or that the models have demonstrated useful
-detection performance.
+The following work remains relevant:
 
-## 13. Scope
+1. The full test suite passes: 668 tests passed, with one Starlette
+   deprecation warning.
+2. The standard 2,000-observation benchmark completed successfully for
+   all four models. The generated report was checked for schema
+   integrity, split isolation, feature-schema consistency, metric
+   validity, and confusion-matrix totals.
+3. Evaluate on appropriately governed, representative, labeled email
+   data before making claims about real-world detection performance.
+4. Assess whether temporal splitting, additional group definitions,
+   calibration, or validation-driven model selection are required for
+   the intended research question.
+5. Document any material differences between synthetic benchmark
+   behavior and performance on real-world data.
 
-This protocol defines how the initial anomaly-detection models are
-to be evaluated and what safeguards the evaluation must satisfy.
+A successful synthetic benchmark is evidence that the pipeline ran
+under its tested conditions. It is not evidence that the models can
+reliably detect real business email compromise.
 
-It documents the evaluation requirements; it is not itself an
-evaluation runner and does not establish empirical model performance.
+## 13. Running the evaluation CLI
 
-Final dataset generation, complete evaluation orchestration, metric
-reporting, experiment tracking, and persistence must be implemented
-or verified separately. Any performance claims must be supported
-by measured results from a documented evaluation.
+Run the official benchmark from the repository root:
+
+    python3 scripts/run_ml_evaluation.py
+
+By default, the command generates 2,000 synthetic observations, uses
+the group-based split strategy, and writes the report to
+`results/ml-evaluation-report.json`.
+
+The principal options are:
+
+- `--output`: destination JSON report path.
+- `--observations`: number of synthetic observations.
+- `--anomaly-rate`: requested synthetic anomaly rate.
+- `--records-per-employee`: observations per synthetic employee group.
+- `--dataset-seed`: seed used for dataset generation.
+- `--split-seed`: seed used for partitioning.
+- `--split-strategy`: `group` or `random_stratified`.
+- `--train-ratio`, `--validation-ratio`, and `--test-ratio`: requested
+  partition proportions.
+- `--force`: explicitly permit replacing an existing report.
+
+For example, a smaller smoke test can be run with a new output filename:
+
+    python3 scripts/run_ml_evaluation.py --observations 200 --records-per-employee 10 --anomaly-rate 0.2 --dataset-seed 42 --split-seed 42 --split-strategy group --output results/ml-evaluation-smoke-example.json
+
+Choose an output path that does not already exist unless replacement
+is intentional. Without `--force`, the CLI refuses to overwrite an
+existing report. The command exits with a nonzero status if argument
+validation or report generation fails, or if any model evaluation
+returns an error.
+
+The JSON report uses an explicit report-schema version. Changes to
+its structure should be reflected in the report version and relevant
+tests.
+
+## 14. Scope
+
+This protocol defines the safeguards, metrics, and reproducibility
+requirements for evaluating the initial anomaly-detection models.
+
+The evaluation CLI implements the initial synthetic benchmark; it does
+not establish empirical real-world detection performance. Synthetic
+scenario labels are generated by predefined rules and are not
+independently verified malicious-email outcomes.
+
+All performance claims must be supported by measured results from a
+documented evaluation. Claims about real-world business email
+compromise detection require additional validation using appropriate
+real-world data and evaluation designs.

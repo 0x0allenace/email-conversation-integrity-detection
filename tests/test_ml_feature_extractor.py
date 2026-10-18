@@ -3,11 +3,14 @@ import math
 import pytest
 
 from src.ml.feature_extractor import (
+    BEC007_FEATURE_SCHEMA_VERSION,
     BEHAVIORAL_FEATURE_NAMES,
     SCALAR_FEATURE_NAMES,
     extract_bec_007_features,
     prepare_bec_007_vector,
 )
+from src.ml.model_interface import MODEL_FEATURE_NAMES
+from src.ml.preprocessing import MISSINGNESS_INDICATOR_NAMES
 
 
 def build_result() -> dict:
@@ -203,3 +206,24 @@ def test_prepare_bec_007_vector_rejects_non_finite_values(value):
         match="Expected a finite numeric value for frequency_interval_ratio",
     ):
         prepare_bec_007_vector(features)
+
+
+
+def test_bec_007_feature_schema_version_and_dimensions():
+    assert BEC007_FEATURE_SCHEMA_VERSION == "1.0.0"
+
+    assert len(SCALAR_FEATURE_NAMES) == 9
+    assert len(BEHAVIORAL_FEATURE_NAMES) == 15
+
+    original_feature_names = (
+        SCALAR_FEATURE_NAMES + BEHAVIORAL_FEATURE_NAMES
+    )
+
+    assert len(original_feature_names) == 24
+    assert len(set(original_feature_names)) == 24
+
+    assert len(MISSINGNESS_INDICATOR_NAMES) == 6
+    assert len(MODEL_FEATURE_NAMES) == 30
+    assert len(set(MODEL_FEATURE_NAMES)) == 30
+    assert MODEL_FEATURE_NAMES[:24] == original_feature_names
+    assert MODEL_FEATURE_NAMES[24:] == MISSINGNESS_INDICATOR_NAMES
