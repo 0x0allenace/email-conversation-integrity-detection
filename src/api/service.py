@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime
 from email.utils import parsedate_to_datetime
 from typing import Any
@@ -14,6 +15,36 @@ from src.engine.detection_engine import DetectionEngine
 from src.identity.identity_analyzer import IdentityAnalyzer
 from src.integrations.siem.service import SIEMService
 from src.parser.email_parser import EmailParser
+
+
+def _make_json_safe(value: Any) -> Any:
+    """Convert nested values into JSON-compatible structures."""
+
+    if isinstance(value, dict):
+        converted = {}
+
+        for key, item in value.items():
+            if isinstance(key, tuple):
+                safe_key = json.dumps(
+                    _make_json_safe(key),
+                    sort_keys=True,
+                )
+            elif isinstance(key, (str, int, float, bool)) or key is None:
+                safe_key = key
+            else:
+                safe_key = str(key)
+
+            converted[safe_key] = _make_json_safe(item)
+
+        return converted
+
+    if isinstance(value, (list, tuple)):
+        return [
+            _make_json_safe(item)
+            for item in value
+        ]
+
+    return value
 
 
 class AnalysisService:
@@ -119,7 +150,7 @@ class AnalysisService:
                 for detection in detections_data
                 if detection["matched"]
             ),
-            result=result,
+            result=_make_json_safe(result),
         )
 
         for detection_data in detections_data:
