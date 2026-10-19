@@ -1514,8 +1514,10 @@ pytest -q
 **Current verified regression baseline:**
 
 ```text
-572 passed
+668 passed
 1 warning
+Execution time: 5.30 seconds
+Environment: Python 3.13.5, pytest 8.4.2, macOS
 ```
 
 The current BEC-008 targeted suite contains:
@@ -1524,7 +1526,7 @@ The current BEC-008 targeted suite contains:
 81 passed
 ```
 
-The project-wide regression currently covers 572 tests across the API, database, email-analysis, detection-rule, scoring, engine, SIEM, and experimental ML components.
+The project-wide regression currently covers 668 tests across the API, database, email-analysis, detection-rule, scoring, engine, SIEM, and experimental ML components.
 
 The single warning currently originates from the installed Starlette/httpx testing dependency stack:
 
